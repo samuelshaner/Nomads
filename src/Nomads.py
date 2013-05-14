@@ -21,7 +21,11 @@ class Solver(object):
         self.ng = mesh.cells[0].material.num_groups
         self.A = np.zeros([mesh.num_cells*self.ng,mesh.num_cells*self.ng])
         self.M = np.zeros([mesh.num_cells*self.ng,mesh.num_cells*self.ng])
+        self.N = np.zeros([4*mesh.num_cells*self.ng,4*mesh.num_cells*self.ng])
         self.phi = np.ones(mesh.num_cells*self.ng)
+        self.b = np.zeros(4*mesh.num_cells*self.ng)
+        self.coeffs = np.zeros(4*mesh.num_cells*self.ng)
+        self.keff = 0.0
         
     def computeDs(self):
         
@@ -124,11 +128,6 @@ class Solver(object):
                         surface.DHat[e] = d_hat
                         surface.DTilde[e] = d_tilde
                 
-                
-                
-                
-                
-                
                          
     def makeAM(self):
         
@@ -222,10 +221,169 @@ class Solver(object):
 
 
         
-       
-#     # compute the NEM currents
-#     def computeCurrents(self):
-#          
+           
+    def makeN(self):
+        
+        cw = self.mesh.cells_x
+        ch = self.mesh.cells_y
+        ng = self.ng
+        
+        for y in range(ch): 
+            for x in range(cw):
+                
+                cell = self.mesh.cells[y*cw+x]
+                
+                for e in range(ng):
+                    
+                    cn = 4*e + 4*ng*x
+                    co = 4*e + 4*ng*(x+1)
+                    cm = 4*e + 4*ng*(x-1)
+                    
+                    if x == 0:
+                            
+                        # CURRENT
+                        # Surface 0
+                        self.N[cn,cn]   = self.dP1(0.0)
+                        self.N[cn,cn+1] = self.dP2(0.0)
+                        self.N[cn,cn+2] = self.dP3(0.0)
+                        self.N[cn,cn+3] = self.dP4(0.0)
+                            
+                        cell_next = self.mesh.cells[y*cw+x+1]
+                             
+                        # CURRENT                        
+                        # Surface 2
+                        self.N[cn+1,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
+                        self.N[cn+1,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
+                        self.N[cn+1,cn+2] = - self.dP3(1.0) * cell.material.D[e] / cell.width
+                        self.N[cn+1,cn+3] = - self.dP4(1.0) * cell.material.D[e] / cell.width
+                        self.N[cn+1,co]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
+                        self.N[cn+1,co+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
+                        self.N[cn+1,co+2] = self.dP3(0.0) * cell_next.material.D[e] / cell_next.width
+                        self.N[cn+1,co+3] = self.dP4(0.0) * cell_next.material.D[e] / cell_next.width                            
+                                                    
+                    elif x == cw - 1:
+                            
+                        # FLUX
+                        # Surface 0
+                        self.N[cn,cn]   = - self.P1(0.0)
+                        self.N[cn,cn+1] = - self.P2(0.0)
+                        self.N[cn,cm]   = self.P1(1.0)
+                        self.N[cn,cm+1] = self.P2(1.0)    
+                        
+                        self.b[cn] = - self.mesh.cells[y*cw+x-1].flux[e] + cell.flux[e]
+                            
+                        # CURRENT
+                        # Surface 2
+                        self.N[cn+1,cn]   = self.dP1(1.0)
+                        self.N[cn+1,cn+1] = self.dP2(1.0)
+                        self.N[cn+1,cn+2] = self.dP3(1.0)
+                        self.N[cn+1,cn+3] = self.dP4(1.0)
+                                                            
+                    else:
+                          
+                        # FLUX
+                        # Surface 0
+                        self.N[cn,cn]   = - self.P1(0.0)
+                        self.N[cn,cn+1] = - self.P2(0.0)
+                        self.N[cn,cm]   = self.P1(1.0)
+                        self.N[cn,cm+1] = self.P2(1.0)  
+                        
+                        self.b[cn] = - self.mesh.cells[y*cw+x-1].flux[e] + cell.flux[e]
+                        
+                        cell_next = self.mesh.cells[y*cw+x+1]
+                             
+                        # CURRENT                        
+                        # Surface 2
+                        self.N[cn+1,cn]   = self.dP1(1.0) * cell.material.D[e] / cell.width
+                        self.N[cn+1,cn+1] = self.dP2(1.0) * cell.material.D[e] / cell.width
+                        self.N[cn+1,cn+2] = self.dP3(1.0) * cell.material.D[e] / cell.width
+                        self.N[cn+1,cn+3] = self.dP4(1.0) * cell.material.D[e] / cell.width
+                        self.N[cn+1,co]   = - self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
+                        self.N[cn+1,co+1] = - self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
+                        self.N[cn+1,co+2] = - self.dP3(0.0) * cell_next.material.D[e] / cell_next.width
+                        self.N[cn+1,co+3] = - self.dP4(0.0) * cell_next.material.D[e] / cell_next.width
+
+
+                    # Residual 1
+                    self.N[cn+2,cn]   = cell.material.sigma_r[e] / 3.0
+                    self.N[cn+2,cn+1] = 0.0
+                    self.N[cn+2,cn+2] = cell.material.sigma_r[e] / 5.0 + 12 * cell.material.D[e] / cell.width**2
+                    self.N[cn+2,cn+3] = 0.0
+                            
+                    # in scattering and fission
+                    for g in range(ng):
+                        # fission
+                        self.N[cn+2,4*g]   -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 3.0
+                        self.N[cn+2,4*g+2] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
+                                
+                        # in scattering
+                        if g != e:
+                            self.N[cn+2,4*g]   -= cell.material.sigma_s[g,e] / 3.0
+                            self.N[cn+2,4*g+2] -= cell.material.sigma_s[g,e] / 5.0
+                            
+                    # Residual 2
+                    self.N[cn+3,cn]   = 0.0
+                    self.N[cn+3,cn+1] = cell.material.sigma_r[e] / 5.0
+                    self.N[cn+3,cn+2] = 0.0
+                    self.N[cn+3,cn+3] = - 3.0 * cell.material.sigma_r[e] / 35.0 - 12.0 * cell.material.D[e] / cell.width**2
+                            
+                    # in scattering and fission
+                    for g in range(ng):
+                        # fission
+                        self.N[cn+3,4*ng*x+4*g+1] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
+                        self.N[cn+3,4*ng*x+4*g+3] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff * (-3.0) / 35.0
+                                
+                        # in scattering
+                        if g != e:
+                            self.N[cn+3,4*ng*x+4*g+1] -= cell.material.sigma_s[g,e] / 5.0
+                            self.N[cn+3,4*ng*x+4*g+3] -= cell.material.sigma_s[g,e] * (-3.0) / 35.0
+                        
+        
+    def computeCoeffs(self):
+        
+        self.coeffs = np.linalg.solve(self.N,self.b)
+        
+        print self.coeffs
+                
+    def phiMid(self):
+        
+        phi_fuel_0 = self.phi[0] + self.coeffs[0] * self.P1(0.5) + self.coeffs[1] * self.P2(0.5) + self.coeffs[2] * self.P3(0.5) + self.coeffs[3] * self.P3(0.5) 
+        phi_fuel_1 = self.phi[1] + self.coeffs[4] * self.P1(0.5) + self.coeffs[5] * self.P2(0.5) + self.coeffs[6] * self.P3(0.5) + self.coeffs[7] * self.P3(0.5) 
+        phi_mod_0 = self.phi[2] + self.coeffs[8] * self.P1(0.5) + self.coeffs[9] * self.P2(0.5) + self.coeffs[10] * self.P3(0.5) + self.coeffs[11] * self.P3(0.5) 
+        phi_mod_1 = self.phi[3] + self.coeffs[12] * self.P1(0.5) + self.coeffs[13] * self.P2(0.5) + self.coeffs[14] * self.P3(0.5) + self.coeffs[15] * self.P3(0.5) 
+
+        print self.phi
+        print phi_fuel_0
+        print phi_fuel_1
+        print phi_mod_0
+        print phi_mod_1
+
+
+    def P1(self, val):
+        return (2 * val - 1)
+    
+    def dP1(self, val):
+        return 2
+    
+    def P2(self, val):
+        return (6.0*val*(1-val)-1)
+    
+    def dP2(self, val):
+        return (6 - 12.0*val)
+    
+    def P3(self, val):
+        return (6.0*val*(1-val)*(2*val-1))
+
+    def dP3(self, val):
+        return (-6.0*(1-6*val+6*val**2))
+    
+    def P4(self, val):
+        return (6.0*val*(1-val)*(5*val**2-5*val+1))
+    
+    def dP4(self, val):
+        return (6.0-72*val+180*val**2-120*val**3)     
+        
+          
         
         
     def solve(self, tol):
@@ -266,12 +424,7 @@ class Solver(object):
             snew += 1.e-10
             res = np.divide(sold, snew)
             res = res - 1.0
-            l2_norm = 0.0
-            
-            for j in res:
-                l2_norm += j**2
-                 
-            l2_norm = sqrt(l2_norm) 
+            l2_norm = np.linalg.norm(res)
          
             # compute error
             l2_norm = l2_norm / (cw*ch*ng)
@@ -281,8 +434,13 @@ class Solver(object):
             
             print 'iteration: ' + str(i) + '  --- keff: ' + str(keff)
              
-             
             if i > 5 and l2_norm < criteria:
+                self.phi = phi_new
+                self.keff = keff
+                
+                for i in range(cw*ch):
+                    for e in range(ng):
+                        self.mesh.cells[i].flux[e] = phi_new[i*ng+e]
                 break            
             
 
@@ -334,12 +492,14 @@ def main():
     fuel.setNuSigmaF([0.005, 0.15])
     fuel.setChi([1.0, 0.0])
     fuel.setSigmaS(np.array([[0.0, 0.02],[0.0, 0.0]]))
+    fuel.makeSigmaR()
     
-        # create fuel
+    # create fuel
     moderator = Material(2, 'moderator')
     moderator.setSigmaA([0.0, 0.01])
     moderator.setD([1.5, 0.20])
     moderator.setSigmaS(np.array([[0.0, 0.025],[0.0, 0.0]]))
+    moderator.makeSigmaR()
 
     # assign fuel and moderator materials to mesh
     mesh.cells[0].setMaterial(fuel)
@@ -358,7 +518,20 @@ def main():
     # solve the matrix problem to get flux profile and keff
     solver.solve(tol)
 
+    solver.makeN()
+#     pttr.plotFlux(solver)
+
+    print solver.N
+    print solver.b
+    
+    solver.computeCoeffs()
+    solver.phiMid()
+    pttr.plotFlux(solver)
+    pttr.plotCurrent(solver)
+
     stop = time.time()
+
+    print solver.phi
 
     print 'Ran solver in ' + str(stop-start) + ' seconds'
 

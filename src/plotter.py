@@ -52,3 +52,54 @@ def plotMesh(mesh, bit_size = 500):
     img.save('material.png')
     
     
+def plotFlux(solver):
+    
+    xf = []
+    xm = []
+    phi_fuel = []
+    phi_mod = []
+    phi_fuel0 = []
+    phi_mod0 = []    
+    for i in range(11):
+        xf.append(i)
+        xm.append(10 + i)
+        phi_fuel.append(solver.phi[1] + solver.coeffs[4] * solver.P1(i/10.0) + solver.coeffs[5] * solver.P2(i/10.0) + solver.coeffs[6] * solver.P3(i/10.0) + solver.coeffs[7] * solver.P3(i/10.0))
+        phi_mod.append(solver.phi[3] + solver.coeffs[12] * solver.P1(i/10.0) + solver.coeffs[13] * solver.P2(i/10.0) + solver.coeffs[14] * solver.P3(i/10.0) + solver.coeffs[15] * solver.P3(i/10.0))         
+        phi_fuel0.append(solver.phi[0] + solver.coeffs[0] * solver.P1(i/10.0) + solver.coeffs[1] * solver.P2(i/10.0) + solver.coeffs[2] * solver.P3(i/10.0) + solver.coeffs[3] * solver.P3(i/10.0))
+        phi_mod0.append(solver.phi[2] + solver.coeffs[8] * solver.P1(i/10.0) + solver.coeffs[9] * solver.P2(i/10.0) + solver.coeffs[10] * solver.P3(i/10.0) + solver.coeffs[11] * solver.P3(i/10.0))        
+    
+    plt.figure()
+    plt.plot(xf,phi_fuel, 'r')
+    plt.plot(xf,phi_fuel0, 'b')
+    plt.plot(xm,phi_mod, 'r')
+    plt.plot(xm,phi_mod0, 'b')
+    plt.savefig('NEM4_flux.png')
+    
+def plotCurrent(solver):
+    
+    xf = []
+    xm = []
+    J_fuel = []
+    J_mod = []
+    J_fuel0 = []
+    J_mod0 = []    
+    
+    for i in range(11):
+        xf.append(i)
+        xm.append(10 + i)
+        J_fuel.append(solver.phi[1] + solver.coeffs[4] * solver.P1(i/10.0) + solver.coeffs[5] * solver.P2(i/10.0) + solver.coeffs[6] * solver.P3(i/10.0) + solver.coeffs[7] * solver.P3(i/10.0))
+        J_mod.append(solver.phi[3] + solver.coeffs[12] * solver.P1(i/10.0) + solver.coeffs[13] * solver.P2(i/10.0) + solver.coeffs[14] * solver.P3(i/10.0) + solver.coeffs[15] * solver.P3(i/10.0))         
+        J_fuel0.append(solver.phi[0] + solver.coeffs[0] * solver.P1(i/10.0) + solver.coeffs[1] * solver.P2(i/10.0) + solver.coeffs[2] * solver.P3(i/10.0) + solver.coeffs[3] * solver.P3(i/10.0))
+        J_mod0.append(solver.phi[2] + solver.coeffs[8] * solver.P1(i/10.0) + solver.coeffs[9] * solver.P2(i/10.0) + solver.coeffs[10] * solver.P3(i/10.0) + solver.coeffs[11] * solver.P3(i/10.0))        
+    
+    plt.figure()
+    plt.plot(xf,J_fuel, 'r')
+    plt.plot(xf,J_fuel0, 'b')
+    plt.plot(xm,J_mod, 'r')
+    plt.plot(xm,J_mod0, 'b')
+    plt.savefig('NEM4_flux.png')
+    
+    
+    
+    
+    

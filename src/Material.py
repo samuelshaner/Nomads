@@ -8,6 +8,7 @@ class Material(object):
         self.D           = np.zeros(num_groups)
         self.num_groups  = num_groups
         self.sigma_a     = np.zeros(num_groups)
+        self.sigma_r     = np.zeros(num_groups)
         self.sigma_t     = np.zeros(num_groups)
         self.nu_sigma_f  = np.zeros(num_groups)
         self.sigma_s     = np.zeros([num_groups, num_groups])
@@ -37,6 +38,15 @@ class Material(object):
     def setD(self, D):
         
         self.D = D
+        
+    def makeSigmaR(self):
+        
+        for e in range(self.num_groups):
+            self.sigma_r[e] = self.sigma_a[e]
+            for g in range(self.num_groups):
+                if g != e:
+                    self.sigma_r[e] += self.sigma_s[e,g]
+                
                 
         
         

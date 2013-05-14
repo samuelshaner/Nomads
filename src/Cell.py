@@ -21,6 +21,7 @@ class Cell(object):
         self.flux     = np.ones(material.num_groups)
         self.current  = np.zeros(material.num_groups)
         self.old_flux = np.ones(material.num_groups)
+        self.coeffs   = np.zeros(4*material.num_groups)
         
                 
                 
