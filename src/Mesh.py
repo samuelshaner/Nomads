@@ -2,7 +2,9 @@
 from math import *
 import numpy as np
 from Cell import *
+from Surface import *
 import sys
+
 
 class Mesh(object):
 
@@ -25,7 +27,7 @@ class Mesh(object):
                 self.cells[y*self.width+x] = Cell(widths[x], heights[y])
                 
                 
-        # set neighbor cells for each cell
+        # set neighbor cells and allocate for each cell
         for y in range(self.cells_y):
             for x in range(self.cells_x):
          
@@ -42,3 +44,33 @@ class Mesh(object):
 
                 if y != 0:
                     cell.neighborCells[3] = self.cells[(y-1)*self.cells_x + x]
+
+
+    def makeSurfaces(self):
+        # set neighbor cells and allocate for each cell
+        for y in range(self.cells_y):
+            for x in range(self.cells_x):
+         
+                cell = self.cells[y*self.cells_x+x]
+        
+                # Surface 0
+                if x == 0:
+                    cell.surfaces[0] = Surface(cell.material.num_groups)
+                else:
+                    cell.surfaces[0] = self.cells[y*self.cells_x+x-1].surfaces[2]
+                    
+                # Surface 1
+                cell.surfaces[1] = Surface(cell.material.num_groups)
+                
+                # Surface 2 
+                cell.surfaces[2] = Surface(cell.material.num_groups)
+                
+                if y == 0:
+                    cell.surfaces[3] = Surface(cell.material.num_groups)
+                else:
+                    cell.surfaces[3] = self.cells[(y-1)*self.cells_x+x].surfaces[1]
+                    
+                    
+                    
+                    
+                    

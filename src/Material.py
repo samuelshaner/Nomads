@@ -18,6 +18,12 @@ class Material(object):
     def setSigmaS(self, xs):
         
         self.sigma_s = xs
+
+        for e in range(self.num_groups):
+            for g in range(self.num_groups):
+                if g != e:
+                    self.sigma_r[e] += self.sigma_s[e,g]
+
     
     def setSigmaT(self, xs):
         
@@ -26,7 +32,10 @@ class Material(object):
     def setSigmaA(self, xs):
         
         self.sigma_a = xs
-        
+
+        for e in range(self.num_groups):
+            self.sigma_r[e] += self.sigma_a[e]
+
     def setNuSigmaF(self, xs):
         
         self.nu_sigma_f = xs
@@ -38,20 +47,5 @@ class Material(object):
     def setD(self, D):
         
         self.D = D
-        
-    def makeSigmaR(self):
-        
-        for e in range(self.num_groups):
-            self.sigma_r[e] = self.sigma_a[e]
-            for g in range(self.num_groups):
-                if g != e:
-                    self.sigma_r[e] += self.sigma_s[e,g]
                 
-                
-        
-        
-        
-        
-        
-        
         
