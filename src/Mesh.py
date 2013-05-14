@@ -24,7 +24,7 @@ class Mesh(object):
         # create cell objects
         for y in range(self.cells_y):
             for x in range(self.cells_x):
-                self.cells[y*self.width+x] = Cell(widths[x], heights[y])
+                self.cells[y*self.cells_x+x] = Cell(widths[x], heights[y])
                 
                 
         # set neighbor cells and allocate for each cell

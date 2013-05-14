@@ -54,71 +54,57 @@ def plotMesh(mesh, bit_size = 500):
     
 def plotFlux(solver):
     
-    xf = []
-    xm = []
-    phi_fuel = []
-    phi_mod = []
-    phi_fuel0 = []
-    phi_mod0 = [] 
-       
-    for i in range(101):
-        xf.append(i/10.0)
-        xm.append(10 + i/10.0)
+    x = np.zeros(solver.mesh.cells_x*100)
+    ng = solver.mesh.cells[0].material.num_groups
+    flux = np.zeros((ng, solver.mesh.cells_x*100))
+
+    for xc in range(solver.mesh.cells_x):
+        cell = solver.mesh.cells[xc]
+        x_val = sum(solver.mesh.widths[0:xc])
         
-        if solver.method == 'NEM4':
-            phi_fuel.append(solver.phi[1] + solver.coeffs[4] * solver.P1(i/100.0) + solver.coeffs[5] * solver.P2(i/100.0) + solver.coeffs[6] * solver.P3(i/100.0) + solver.coeffs[7] * solver.P4(i/100.0))
-            phi_mod.append(solver.phi[3] + solver.coeffs[12] * solver.P1(i/100.0) + solver.coeffs[13] * solver.P2(i/100.0) + solver.coeffs[14] * solver.P3(i/100.0) + solver.coeffs[15] * solver.P4(i/100.0))         
-            phi_fuel0.append(solver.phi[0] + solver.coeffs[0] * solver.P1(i/100.0) + solver.coeffs[1] * solver.P2(i/100.0) + solver.coeffs[2] * solver.P3(i/100.0) + solver.coeffs[3] * solver.P4(i/100.0))
-            phi_mod0.append(solver.phi[2] + solver.coeffs[8] * solver.P1(i/100.0) + solver.coeffs[9] * solver.P2(i/100.0) + solver.coeffs[10] * solver.P3(i/100.0) + solver.coeffs[11] * solver.P4(i/100.0))
-        else:
-            phi_fuel.append(solver.phi[1] + solver.coeffs[2] * solver.P1(i/100.0) + solver.coeffs[3] * solver.P2(i/100.0))
-            phi_mod.append(solver.phi[3] + solver.coeffs[6] * solver.P1(i/100.0) + solver.coeffs[7] * solver.P2(i/100.0))         
-            phi_fuel0.append(solver.phi[0] + solver.coeffs[0] * solver.P1(i/100.0) + solver.coeffs[1] * solver.P2(i/100.0))
-            phi_mod0.append(solver.phi[2] + solver.coeffs[4] * solver.P1(i/100.0) + solver.coeffs[5] * solver.P2(i/100.0))
-                            
-    
-    
+        for i in range (100):
+            
+            x[xc*100+i] = x[xc*100+i-1] + cell.width/100.0
+            
+            for e in range(ng):
+                if solver.method == 'NEM4':
+                    flux[e,xc*100+i] = solver.phi[xc*ng+e] + solver.coeffs[4*xc*ng+4*e] * solver.P1(i/100.0) + solver.coeffs[4*xc*ng+4*e+1] * solver.P2(i/100.0) + solver.coeffs[4*xc*ng+4*e+2] * solver.P3(i/100.0) + solver.coeffs[4*xc*ng+4*e+3] * solver.P4(i/100.0)
+                else:
+                    flux[e,xc*100+i] = solver.phi[xc*ng+e] + solver.coeffs[2*xc*ng+2*e] * solver.P1(i/100.0) + solver.coeffs[2*xc*ng+2*e+1] * solver.P2(i/100.0) 
+                    
     
     plt.figure()
-    plt.plot(xf,phi_fuel, 'r')
-    plt.plot(xf,phi_fuel0, 'b')
-    plt.plot(xm,phi_mod, 'r')
-    plt.plot(xm,phi_mod0, 'b')
+    for e in range(ng):
+        plt.plot(x,flux[e,:])
+    
     plt.savefig(solver.method + '_flux.png')
     
     
 def plotCurrent(solver):
     
-    xf = []
-    xm = []
-    J_fuel = []
-    J_mod = []
-    J_fuel0 = []
-    J_mod0 = []    
-    
-    for i in range(101):
-        xf.append(i/10.0)
-        xm.append(10 + i/10.0)
+    x = np.zeros(solver.mesh.cells_x*100)
+    ng = solver.mesh.cells[0].material.num_groups
+    current = np.zeros((ng, solver.mesh.cells_x*100))
+
+    for xc in range(solver.mesh.cells_x):
+        cell = solver.mesh.cells[xc]
+        x_val = sum(solver.mesh.widths[0:xc])
         
-        if solver.method == 'NEM4':
-            J_fuel.append(- solver.mesh.cells[0].material.D[1] / solver.mesh.cells[0].width * (solver.coeffs[4] * solver.dP1(i/100.0) + solver.coeffs[5] * solver.dP2(i/100.0) + solver.coeffs[6] * solver.dP3(i/100.0) + solver.coeffs[7] * solver.dP4(i/100.0)))
-            J_mod.append(- solver.mesh.cells[-1].material.D[1] / solver.mesh.cells[-1].width * (solver.coeffs[12] * solver.dP1(i/100.0) + solver.coeffs[13] * solver.dP2(i/100.0) + solver.coeffs[14] * solver.dP3(i/100.0) + solver.coeffs[15] * solver.dP4(i/100.0)))         
-            J_fuel0.append(- solver.mesh.cells[0].material.D[0] / solver.mesh.cells[0].width * (solver.coeffs[0] * solver.dP1(i/100.0) + solver.coeffs[1] * solver.dP2(i/100.0) + solver.coeffs[2] * solver.dP3(i/100.0) + solver.coeffs[3] * solver.dP4(i/100.0)))
-            J_mod0.append(- solver.mesh.cells[-1].material.D[0] / solver.mesh.cells[-1].width * (solver.coeffs[8] * solver.dP1(i/100.0) + solver.coeffs[9] * solver.dP2(i/100.0) + solver.coeffs[10] * solver.dP3(i/100.0) + solver.coeffs[11] * solver.dP4(i/100.0)))        
-        else:
-            J_fuel.append(- solver.mesh.cells[0].material.D[1] / solver.mesh.cells[0].width * (solver.coeffs[2] * solver.dP1(i/100.0) + solver.coeffs[3] * solver.dP2(i/100.0)))
-            J_mod.append(- solver.mesh.cells[-1].material.D[1] / solver.mesh.cells[-1].width * (solver.coeffs[6] * solver.dP1(i/100.0) + solver.coeffs[7] * solver.dP2(i/100.0)))         
-            J_fuel0.append(- solver.mesh.cells[0].material.D[0] / solver.mesh.cells[0].width * (solver.coeffs[0] * solver.dP1(i/100.0) + solver.coeffs[1] * solver.dP2(i/100.0)))
-            J_mod0.append(- solver.mesh.cells[-1].material.D[0] / solver.mesh.cells[-1].width * (solver.coeffs[4] * solver.dP1(i/100.0) + solver.coeffs[5] * solver.dP2(i/100.0)))        
+        for i in range (100):
+            
+            x[xc*100+i] = x[xc*100+i-1] + cell.width/100.0
+            
+            for e in range(ng):
+                if solver.method == 'NEM4':
+                    current[e,xc*100+i] = - cell.material.D[e] / cell.width * (solver.coeffs[4*xc*ng+4*e] * solver.dP1(i/100.0) + solver.coeffs[4*xc*ng+4*e+1] * solver.dP2(i/100.0) + solver.coeffs[4*xc*ng+4*e+2] * solver.dP3(i/100.0) + solver.coeffs[4*xc*ng+4*e+3] * solver.dP4(i/100.0))    
+                else:
+                    current[e,xc*100+i] = - cell.material.D[e] / cell.width * (solver.coeffs[2*xc*ng+2*e] * solver.dP1(i/100.0) + solver.coeffs[2*xc*ng+2*e+1] * solver.dP2(i/100.0))                    
     
     plt.figure()
-    plt.plot(xf,J_fuel, 'r')
-    plt.plot(xf,J_fuel0, 'b')
-    plt.plot(xm,J_mod, 'r')
-    plt.plot(xm,J_mod0, 'b')
-    plt.savefig(solver.method + '_current.png')
+    for e in range(ng):
+        plt.plot(x,current[e,:])
     
-    
+    plt.savefig(solver.method + '_current.png')    
     
     
     

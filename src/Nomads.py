@@ -42,6 +42,10 @@ class Solver(object):
         ng = self.ng
         flux_next = 0.0
         flux = 0.0
+        relax_factor = 0.66
+        
+        if self.mesh.cells[0].width <= 5.0:
+            relax_factor = 0.33
         
         for y in range(ch):
             for x in range(cw):
@@ -72,7 +76,7 @@ class Solver(object):
                             length = cell.width
                             length_perpen = cell.height
                             
-                        if cellNext == '':
+                        if cellNext is None:
                             if surface.boundary == 'reflective':
                                 d_hat = 0.0
                                 d_tilde = 0.0
@@ -109,7 +113,7 @@ class Solver(object):
                                 d_tilde = - (sense * d_hat * (flux_next - flux) + current / length) / (flux_next + flux)
                         
                         if abs(d_tilde) > abs(d_hat):
-                        
+                         
                             if sense == -1:
                                 if (1 - abs(d_tilde)/d_tilde < 1.e-8):
                                     d_hat   = - current / (2*flux*length)
@@ -128,7 +132,7 @@ class Solver(object):
                                             
                         surface.DDif[e] = d_dif
                         surface.DHat[e] = d_hat
-                        surface.DTilde[e] = d_tilde                
+                        surface.DTilde[e] = surface.DTilde[e] * (1 - relax_factor) + relax_factor * d_tilde                
                          
     def makeAM(self):
         
@@ -320,55 +324,62 @@ class Solver(object):
                         # CURRENT                        
                         # Surface 2
                         if order == 4:
-                            self.N[cn+1,cn]   = self.dP1(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,cn+1] = self.dP2(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,cn+2] = self.dP3(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,cn+3] = self.dP4(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,co]   = - self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+1,co+1] = - self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+1,co+2] = - self.dP3(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+1,co+3] = - self.dP4(0.0) * cell_next.material.D[e] / cell_next.width
+                            self.N[cn+1,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
+                            self.N[cn+1,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
+                            self.N[cn+1,cn+2] = - self.dP3(1.0) * cell.material.D[e] / cell.width
+                            self.N[cn+1,cn+3] = - self.dP4(1.0) * cell.material.D[e] / cell.width
+                            self.N[cn+1,co]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
+                            self.N[cn+1,co+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
+                            self.N[cn+1,co+2] = self.dP3(0.0) * cell_next.material.D[e] / cell_next.width
+                            self.N[cn+1,co+3] = self.dP4(0.0) * cell_next.material.D[e] / cell_next.width
                         else:
-                            self.N[cn+1,cn]   = self.dP1(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,cn+1] = self.dP2(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,co]   = - self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+1,co+1] = - self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
+                            self.N[cn+1,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
+                            self.N[cn+1,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
+                            self.N[cn+1,co]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
+                            self.N[cn+1,co+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
                             
 
                     if order == 4:
+                        
                         # Residual 1
                         self.N[cn+2,cn]   = cell.material.sigma_r[e] / 3.0
                         self.N[cn+2,cn+1] = 0.0
                         self.N[cn+2,cn+2] = cell.material.sigma_r[e] / 5.0 + 12 * cell.material.D[e] / cell.width**2
                         self.N[cn+2,cn+3] = 0.0
+                        
+                        cnp = order*ng*x
+#                         cn = order*e + order*ng*x
                             
                         # in scattering and fission
                         for g in range(ng):
                             # fission
-                            self.N[cn+2,4*g]   -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 3.0
-                            self.N[cn+2,4*g+2] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
+                            self.N[cn+2,cnp+order*g]   -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 3.0
+                            self.N[cn+2,cnp+order*g+2] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
                                 
                             # in scattering
                             if g != e:
-                                self.N[cn+2,4*g]   -= cell.material.sigma_s[g,e] / 3.0
-                                self.N[cn+2,4*g+2] -= cell.material.sigma_s[g,e] / 5.0
+                                self.N[cn+2,cnp+order*g]   -= cell.material.sigma_s[g,e] / 3.0
+                                self.N[cn+2,cnp+order*g+2] -= cell.material.sigma_s[g,e] / 5.0
+
                             
                         # Residual 2
                         self.N[cn+3,cn]   = 0.0
                         self.N[cn+3,cn+1] = cell.material.sigma_r[e] / 5.0
                         self.N[cn+3,cn+2] = 0.0
                         self.N[cn+3,cn+3] = - 3.0 * cell.material.sigma_r[e] / 35.0 - 12.0 * cell.material.D[e] / cell.width**2
+
+                        cn = order*ng*x
                             
                         # in scattering and fission
                         for g in range(ng):
                             # fission
-                            self.N[cn+3,4*ng*x+4*g+1] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
-                            self.N[cn+3,4*ng*x+4*g+3] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff * (-3.0) / 35.0
+                            self.N[cn+3,cnp+order*g+1] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
+                            self.N[cn+3,cnp+order*g+3] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff * (-3.0) / 35.0
                                 
                             # in scattering
                             if g != e:
-                                self.N[cn+3,4*ng*x+4*g+1] -= cell.material.sigma_s[g,e] / 5.0
-                                self.N[cn+3,4*ng*x+4*g+3] -= cell.material.sigma_s[g,e] * (-3.0) / 35.0
+                                self.N[cn+3,cnp+order*g+1] -= cell.material.sigma_s[g,e] / 5.0
+                                self.N[cn+3,cnp+order*g+3] -= cell.material.sigma_s[g,e] * (-3.0) / 35.0
                         
         
     def computeCoeffs(self):
@@ -410,7 +421,6 @@ class Solver(object):
                                     surface.current[e] = - cell.material.D[e] / cell.width * (self.coeffs[cn] * self.dP1(1.0) + self.coeffs[cn+1] * self.dP2(1.0))
                                 else:
                                     surface.current[e] = - cell.material.D[e] / cell.width * (self.coeffs[cn] * self.dP1(0.0) + self.coeffs[cn+1] * self.dP2(0.0))
-        
 
     def P1(self, val):
         return (2 * val - 1)
@@ -439,14 +449,13 @@ class Solver(object):
 
     def solve(self, tol):
                  
-        max_iter = 10
+        max_iter = 100
         ng = self.mesh.cells[0].material.num_groups
         cw = self.mesh.cells_x
         ch = self.mesh.cells_y
         sold = np.zeros(cw*ch*ng)
         snew = np.zeros(cw*ch*ng)
         res = np.zeros(cw*ch*ng)
-        criteria = 1.e-5
         self.phi = np.ones(cw*ch*ng)
         self.keff_old = self.keff
 
@@ -486,7 +495,7 @@ class Solver(object):
             
             print 'iteration: ' + str(i) + '  --- keff: ' + str(keff)[0:10]
              
-            if i > 5 and l2_norm < criteria:
+            if l2_norm < tol:
                 self.keff = keff
                 
                 for i in range(cw*ch):
@@ -507,7 +516,7 @@ def main():
         sys.exit(2)
 
     # set default values
-    tol = .0001
+    tol = 1.e-8
     plot_flux = False
     
     mesh_width   = 2
@@ -538,6 +547,7 @@ def main():
 
     # create mesh
     mesh = Mesh([cell_size,cell_size], [1.0])
+#     mesh = Mesh([cell_size/2.0,cell_size/2.0,cell_size/2.0,cell_size/2.0], [1.0])
       
     # create fuel
     fuel = Material(2, 'fuel')
@@ -552,11 +562,22 @@ def main():
     moderator.setSigmaA([0.0, 0.01])
     moderator.setD([1.5, 0.20])
     moderator.setSigmaS(np.array([[0.0, 0.025],[0.0, 0.0]]))
+    
+    if solve_method == 'NEM4':
+        order = 4
+    else:
+        order = 2
 
     # assign fuel and moderator materials to mesh
-    mesh.cells[0].setMaterial(fuel)
-    mesh.cells[1].setMaterial(moderator)
+    mesh.cells[0].setMaterial(fuel, order)
+    mesh.cells[1].setMaterial(moderator, order)
     mesh.makeSurfaces()
+
+#     mesh.cells[0].setMaterial(fuel, order)
+#     mesh.cells[1].setMaterial(fuel, order)
+#     mesh.cells[2].setMaterial(moderator, order)
+#     mesh.cells[3].setMaterial(moderator, order)
+#     mesh.makeSurfaces()
     
     # plot the mesh
     pttr.plotMesh(mesh)
@@ -567,9 +588,9 @@ def main():
     # solve the matrix problem to get flux profile and keff
     
     if solve_method == 'NEM4' or solve_method == 'NEM2':
-        for i in range(iterations):
+        for iteration in range(iterations):
         
-            print 'CMFD outer iteration ' + str(i)
+            print 'CMFD outer iteration ' + str(iteration)
         
             solver.computeDs()
             solver.makeAM()
@@ -579,7 +600,7 @@ def main():
             solver.computeCurrents()
         
             if abs(solver.keff_old - solver.keff) < 1.e-8:
-                print solve_method + ': Converged in ' + str(i) + ' iterations --- k_eff = ' + str(solver.keff)[0:10]
+                print solve_method + ': Converged in ' + str(iteration) + ' iterations --- k_eff = ' + str(solver.keff)[0:10]
                 break
             
             
@@ -598,9 +619,6 @@ def main():
     stop = time.time()
     
     print 'Ran time ' + str(stop-start)[0:5] + ' seconds'
-
-#     if plot_flux:
-#         pttr.plotFlux(mesh)
 
     print '----------------------------------------------------------------------'
 
