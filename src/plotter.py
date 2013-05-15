@@ -16,19 +16,52 @@ def plotMesh(mesh, bit_size = 500):
     
     cw = mesh.cells_x
     y_val = 0.0
+
+    # find number of cell types
+    num_cell_types = 0
+    cell_types = np.array([])
+    for y in range(mesh.cells_y):
+        for x in range(mesh.cells_x):
+            cell = mesh.cells[y*cw+x]
+            
+            if cell.material.id not in cell_types:
+                cell_types = np.append(cell_types, cell.material.id)
+                num_cell_types += 1
     
     # draw cells
+    val_max = len(cell_types)
     for y in range(mesh.cells_y):
         x_val = 0.0
         for x in range(mesh.cells_x):
             
+            red = 0.0
+            blue = 0.0
+            green = 0.0
+            
             cell = mesh.cells[y*cw+x]
-        
-            # fuel red; moderator blue
-            if cell.material.id == 'fuel':
-                draw.rectangle([x_val, y_val, x_val + mesh.widths[x] * bit_x, y_val + mesh.heights[y] * bit_y], (255,0,0))
+            
+            val = np.where(cell_types == cell.material.id)[0]
+            
+            # get color
+            if (float(val) / val_max <= 1.0/3.0):
+                red = 0.0
+                green = 3.0 * val / val_max
+                blue = 1.0
+            elif (float(val) / val_max <= 2.0/3.0):
+                red = 3.0 * val / val_max - 1.0
+                green = 1.0
+                blue = -3.0 * val / val_max + 2.0
             else:
-                draw.rectangle([x_val, y_val, x_val + mesh.widths[x] * bit_x, y_val + mesh.heights[y] * bit_y], (0,0,255))
+                red = 1.0
+                green = -3.0 * val / val_max + 3.0
+                blue = 0.0
+            
+            # convert color to RGB triplet
+            red = int(255*red)
+            green = int(255*green)
+            blue = int(255*blue)
+
+            draw.rectangle([x_val, y_val, x_val + mesh.widths[x] * bit_x, y_val + mesh.heights[y] * bit_y], (red,green,blue))
                 
             x_val += mesh.widths[x] * bit_x
         
@@ -39,13 +72,13 @@ def plotMesh(mesh, bit_size = 500):
     x_val = 0.0
     for x in range(mesh.cells_x-1):
         x_val += mesh.widths[x]*bit_x
-        draw.line((x_val, 0, x_val, bit_size), fill=(0,0,0), width=2)
+        draw.line((x_val, 0, x_val, bit_size), fill=(0,0,0), width=1)
 
     # draw horizontal grid lines
     y_val = 0.0
     for y in range(mesh.cells_y-1):
         y_val += mesh.heights[y]*bit_y
-        draw.line((0, y_val, bit_size, y_val), fill=(0,0,0), width=2)
+        draw.line((0, y_val, bit_size, y_val), fill=(0,0,0), width=1)
         
 
     # save image
@@ -103,7 +136,72 @@ def plotCurrent(solver):
     for e in range(ng):
         plt.plot(x,current[e,:])
     
-    plt.savefig(solver.method + '_current.png')    
+    plt.savefig(solver.method + '_current.png')  
+    
+    
+def plotCellFlux(solver, bit_size = 500):
+
+    # create image
+    bit_x = float(bit_size) / solver.mesh.width
+    bit_y = float(bit_size) / solver.mesh.height
+    img = Image.new('RGB', (bit_size,bit_size), 'white')
+    draw = ImageDraw.Draw(img)
+    
+    ng = solver.mesh.cells[0].material.num_groups
+    y_val = 0.0
+    
+    # draw cells
+    val_max = max(solver.phi)
+    for y in range(solver.mesh.cells_y):
+        x_val = 0.0
+        for x in range(solver.mesh.cells_x):
+            red = 0.0
+            blue = 0.0
+            green = 0.0
+            
+            val = solver.phi[(y*solver.mesh.cells_x+x)*ng]
+            
+            # get color
+            if (float(val) / val_max <= 1.0/3.0):
+                red = 0.0
+                green = 3.0 * val / val_max
+                blue = 1.0
+            elif (float(val) / val_max <= 2.0/3.0):
+                red = 3.0 * val / val_max - 1.0
+                green = 1.0
+                blue = -3.0 * val / val_max + 2.0
+            else:
+                red = 1.0
+                green = -3.0 * val / val_max + 3.0
+                blue = 0.0
+            
+            # convert color to RGB triplet
+            red = int(255*red)
+            green = int(255*green)
+            blue = int(255*blue)
+
+            draw.rectangle([x_val, y_val, x_val + solver.mesh.widths[x] * bit_x, y_val + solver.mesh.heights[y] * bit_y], (red,green,blue))
+                
+            x_val += solver.mesh.widths[x] * bit_x
+        
+        y_val += solver.mesh.heights[y] * bit_y
+                
+
+    # draw vertical grid lines
+    x_val = 0.0
+    for x in range(solver.mesh.cells_x-1):
+        x_val += solver.mesh.widths[x]*bit_x
+        draw.line((x_val, 0, x_val, bit_size), fill=(0,0,0), width=1)
+
+    # draw horizontal grid lines
+    y_val = 0.0
+    for y in range(solver.mesh.cells_y-1):
+        y_val += solver.mesh.heights[y]*bit_y
+        draw.line((0, y_val, bit_size, y_val), fill=(0,0,0), width=1)
+        
+
+    # save image
+    img.save('scalar_flux.png')  
     
     
     

@@ -10,6 +10,8 @@ import os
 import sys
 import getopt
 import time
+from scipy.sparse import lil_matrix
+from scipy.sparse.linalg import spsolve
 
 
 class Solver(object):
@@ -19,15 +21,15 @@ class Solver(object):
         self.mesh = mesh
         self.method = method
         self.ng = mesh.cells[0].material.num_groups
-        self.A = np.zeros([mesh.num_cells*self.ng,mesh.num_cells*self.ng])
-        self.M = np.zeros([mesh.num_cells*self.ng,mesh.num_cells*self.ng])
+        self.A = lil_matrix((mesh.num_cells*self.ng,mesh.num_cells*self.ng))
+        self.M = lil_matrix((mesh.num_cells*self.ng,mesh.num_cells*self.ng))
         
         if method == 'NEM4':
-            self.N = np.zeros([8*mesh.num_cells*self.ng,8*mesh.num_cells*self.ng])
+            self.N = lil_matrix((8*mesh.num_cells*self.ng,8*mesh.num_cells*self.ng))
             self.coeffs = np.zeros(8*mesh.num_cells*self.ng)
             self.b = np.zeros(8*mesh.num_cells*self.ng)
         else:
-            self.N = np.zeros([4*mesh.num_cells*self.ng,4*mesh.num_cells*self.ng])
+            self.N = lil_matrix((4*mesh.num_cells*self.ng,4*mesh.num_cells*self.ng))
             self.coeffs = np.zeros(4*mesh.num_cells*self.ng)
             self.b = np.zeros(4*mesh.num_cells*self.ng)
             
@@ -42,10 +44,8 @@ class Solver(object):
         ng = self.ng
         flux_next = 0.0
         flux = 0.0
-        relax_factor = .66
         
-        if self.mesh.cells[0].width <= 5.0:
-            relax_factor = 0.33
+        relax_factor = 0.33
         
         for y in range(ch):
             for x in range(cw):
@@ -71,10 +71,8 @@ class Solver(object):
                         # set the length of the surface parallel to and perpendicular from surface
                         if side == 0 or side == 2:
                             length_perpen = cell.width
-                            length = cell.height
                         elif side == 1 or side == 3:
                             length_perpen = cell.height
-                            length = cell.width
                             
                             
                         if cellNext is None:
@@ -141,9 +139,11 @@ class Solver(object):
         ch = self.mesh.cells_y
         ng = self.ng
 
-        self.A[:,:] = 0.0
-        self.M[:,:] = 0.0
-
+        self.A = self.A.tolil()
+        self.A = self.A * 0.0
+        self.M = self.M.tolil()
+        self.M = self.M * 0.0
+        
         for y in range(ch): 
             for x in range(cw):
                 
@@ -228,7 +228,9 @@ class Solver(object):
                         elif self.method == 'diffusion':
                             self.A[(y*cw+x)*ng + e, ((y-1)*cw+x)*ng + e] -= cell.surfaces[3].DDif[e] * cell.width
 
-        
+        self.A = self.A.tocsr()
+        self.M = self.M.tocsr()
+                
            
     def makeN(self):
         
@@ -236,12 +238,13 @@ class Solver(object):
         ch = self.mesh.cells_y
         ng = self.ng
         
-        self.N[:,:] = 0.0
-        
         if self.method == 'NEM4':
             order = 4
         elif self.method == 'NEM2':
             order = 2
+        
+        self.N = self.N.tolil()
+        self.N = self.N * 0.0
         
         for y in range(ch): 
             for x in range(cw):
@@ -645,13 +648,14 @@ class Solver(object):
                                 self.N[cn+7,cnp+2*order*g+7] -= cell.material.sigma_s[g,e] * (-3.0) / 35.0
                         
                         
+        self.N = self.N.tocsr()
 
         
     def computeCoeffs(self):
         
-        self.coeffs = np.linalg.solve(self.N,self.b)
-
-                
+        self.coeffs = spsolve(self.N,self.b)
+        self.N = self.N.tolil()
+        
     # compute the currents        
     def computeCurrents(self):
         
@@ -724,7 +728,7 @@ class Solver(object):
 
     def solve(self, tol):
                  
-        max_iter = 100
+        max_iter = 1000
         ng = self.mesh.cells[0].material.num_groups
         cw = self.mesh.cells_x
         ch = self.mesh.cells_y
@@ -735,21 +739,21 @@ class Solver(object):
         self.keff_old = self.keff
 
         # get initial source and find initial keff
-        snew = np.dot(self.M,self.phi)
+        snew = self.M * self.phi
         sumnew = np.sum(snew)
-        sold = np.dot(self.A,self.phi)
+        sold = self.A * self.phi
         sumold = np.sum(sold)
         keff = sumnew / sumold
         
         # recompute and initialize the initial source
-        sold = np.dot(self.M,self.phi)
-        sumold = np.sum(sold)
+        sold = self.M * self.phi
+        sumold = sum(sold)
         sold = sold * (cw*ch*ng / sumold)
         sumold = cw*ch*ng
         
         for i in range(max_iter):
-            self.phi = np.linalg.solve(self.A, sold)
-            snew = np.dot(self.M,self.phi)
+            self.phi = spsolve(self.A, sold)
+            snew = self.M * self.phi
             sumnew = np.sum(snew)
             
             # compute and set keff
@@ -822,7 +826,6 @@ def main():
 
     # create mesh
     mesh = Mesh([cell_size,cell_size], [cell_size])
-#     mesh = Mesh([cell_size/2.0,cell_size/2.0,cell_size/2.0,cell_size/2.0], [1.0])
       
     # create fuel
     fuel = Material(2, 'fuel')
@@ -842,12 +845,7 @@ def main():
         order = 4
     else:
         order = 2
-
-    # assign fuel and moderator materials to mesh
-#     mesh.cells[0].setMaterial(fuel, order)
-#     mesh.cells[1].setMaterial(moderator, order)
-#     mesh.makeSurfaces()
-
+        
     mesh.cells[0].setMaterial(fuel, order)
     mesh.cells[1].setMaterial(moderator, order)
     mesh.makeSurfaces()
@@ -873,10 +871,9 @@ def main():
             solver.computeCurrents()
         
             if abs(solver.keff_old - solver.keff) < 1.e-8:
-                print solve_method + ': Converged in ' + str(iteration) + ' iterations --- k_eff = ' + str(solver.keff)[0:10]
+                print solve_method + ': Converged in ' + str(iteration+1) + ' iterations --- k_eff = ' + str(solver.keff)[0:10]
                 break
-            
-            
+                                
     elif solve_method == 'diffusion':
         solver.computeDs()
         solver.makeAM()
@@ -887,6 +884,7 @@ def main():
     
     if solve_method == 'NEM4' or solve_method == 'NEM2':
         pttr.plotFlux(solver)
+        pttr.plotCellFlux(solver)
 #         pttr.plotCurrent(solver)
 
     stop = time.time()
