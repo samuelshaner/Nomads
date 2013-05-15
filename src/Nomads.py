@@ -23,13 +23,13 @@ class Solver(object):
         self.M = np.zeros([mesh.num_cells*self.ng,mesh.num_cells*self.ng])
         
         if method == 'NEM4':
+            self.N = np.zeros([8*mesh.num_cells*self.ng,8*mesh.num_cells*self.ng])
+            self.coeffs = np.zeros(8*mesh.num_cells*self.ng)
+            self.b = np.zeros(8*mesh.num_cells*self.ng)
+        else:
             self.N = np.zeros([4*mesh.num_cells*self.ng,4*mesh.num_cells*self.ng])
             self.coeffs = np.zeros(4*mesh.num_cells*self.ng)
             self.b = np.zeros(4*mesh.num_cells*self.ng)
-        else:
-            self.N = np.zeros([2*mesh.num_cells*self.ng,2*mesh.num_cells*self.ng])
-            self.coeffs = np.zeros(2*mesh.num_cells*self.ng)
-            self.b = np.zeros(2*mesh.num_cells*self.ng)
             
         self.phi = np.ones(mesh.num_cells*self.ng)
         self.keff = 1.0
@@ -42,7 +42,7 @@ class Solver(object):
         ng = self.ng
         flux_next = 0.0
         flux = 0.0
-        relax_factor = 0.66
+        relax_factor = .66
         
         if self.mesh.cells[0].width <= 5.0:
             relax_factor = 0.33
@@ -70,11 +70,12 @@ class Solver(object):
                             
                         # set the length of the surface parallel to and perpendicular from surface
                         if side == 0 or side == 2:
-                            length = cell.height
                             length_perpen = cell.width
+                            length = cell.height
                         elif side == 1 or side == 3:
-                            length = cell.width
                             length_perpen = cell.height
+                            length = cell.width
+                            
                             
                         if cellNext is None:
                             if surface.boundary == 'reflective':
@@ -90,7 +91,7 @@ class Solver(object):
                                 if flux == 0.0:
                                     d_tilde = 0.0
                                 else:
-                                    d_tilde = (sense * d_hat * flux - current / length) / flux
+                                    d_tilde = (sense * d_hat * flux - current) / flux
                                 
                         else:
 
@@ -110,29 +111,29 @@ class Solver(object):
                             if flux == 0.0 and flux_next == 0.0:
                                 d_tilde = 0.0
                             else:
-                                d_tilde = - (sense * d_hat * (flux_next - flux) + current / length) / (flux_next + flux)
+                                d_tilde = - (sense * d_hat * (flux_next - flux) + current) / (flux_next + flux)
                         
                         if abs(d_tilde) > abs(d_hat):
-                         
                             if sense == -1:
                                 if (1 - abs(d_tilde)/d_tilde < 1.e-8):
-                                    d_hat   = - current / (2*flux*length)
-                                    d_tilde = - current / (2*flux*length)
+                                    d_hat   = - current / (2*flux)
+                                    d_tilde = - current / (2*flux)
                                 else:
-                                    d_hat   = current / (2*flux_next*length)
-                                    d_tilde = - current / (2*flux_next*length)
+                                    d_hat   = current / (2*flux_next)
+                                    d_tilde = - current / (2*flux_next)
                             else: 
                                 if (1 - abs(d_tilde)/d_tilde < 1.e-8):
-                                    d_hat   = - current / (2*flux_next*length)
-                                    d_tilde = - current / (2*flux_next*length)
+                                    d_hat   = - current / (2*flux_next)
+                                    d_tilde = - current / (2*flux_next)
                                 else:
-                                    d_hat   = current / (2*flux*length)
-                                    d_tilde = - current / (2*flux*length)
+                                    d_hat   = current / (2*flux)
+                                    d_tilde = - current / (2*flux)
                                             
                                             
                         surface.DDif[e] = d_dif
                         surface.DHat[e] = d_hat
                         surface.DTilde[e] = surface.DTilde[e] * (1 - relax_factor) + relax_factor * d_tilde                
+                         
                          
     def makeAM(self):
         
@@ -227,7 +228,6 @@ class Solver(object):
                         elif self.method == 'diffusion':
                             self.A[(y*cw+x)*ng + e, ((y-1)*cw+x)*ng + e] -= cell.surfaces[3].DDif[e] * cell.width
 
-
         
            
     def makeN(self):
@@ -250,142 +250,408 @@ class Solver(object):
                 
                 for e in range(ng):
                     
-                    cn = order*e + order*ng*x
-                    co = order*e + order*ng*(x+1)
-                    cm = order*e + order*ng*(x-1)
+                    cn = 2*order*e + 2*order*ng*(y*cw+x)
+                    cr = 2*order*e + 2*order*ng*(y*cw+x+1)
+                    cl = 2*order*e + 2*order*ng*(y*cw+x-1)
+                    cd = 2*order*e + 2*order*ng*((y+1)*cw+x)
+                    cu = 2*order*e + 2*order*ng*((y-1)*cw+x)                    
                     
-                    if x == 0:
+                    if y == 0:
+                        if x == 0:
+                            # CURRENT BOUNDARY SURFACE 0
+                            if order == 4:
+                                self.N[cn,cn]   = self.dP1(0.0)
+                                self.N[cn,cn+1] = self.dP2(0.0)
+                                self.N[cn,cn+2] = self.dP3(0.0)
+                                self.N[cn,cn+3] = self.dP4(0.0)
+                            else:
+                                self.N[cn,cn]   = self.dP1(0.0)
+                                self.N[cn,cn+1] = self.dP2(0.0)
                             
-                        # CURRENT
-                        # Surface 0
-                        if order == 4:
-                            self.N[cn,cn]   = self.dP1(0.0)
-                            self.N[cn,cn+1] = self.dP2(0.0)
-                            self.N[cn,cn+2] = self.dP3(0.0)
-                            self.N[cn,cn+3] = self.dP4(0.0)
-                        else:
-                            self.N[cn,cn]   = self.dP1(0.0)
-                            self.N[cn,cn+1] = self.dP2(0.0)
-                            
-                        cell_next = self.mesh.cells[y*cw+x+1]
-                             
-                        # CURRENT                        
-                        # Surface 2
-                        if order == 4:
-                            self.N[cn+1,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,cn+2] = - self.dP3(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,cn+3] = - self.dP4(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,co]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+1,co+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+1,co+2] = self.dP3(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+1,co+3] = self.dP4(0.0) * cell_next.material.D[e] / cell_next.width                            
-                        else:
-                            self.N[cn+1,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,co]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+1,co+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
-                                                    
-                    elif x == cw - 1:
-                            
-                        # FLUX
-                        # Surface 0
-                        self.N[cn,cn]   = - self.P1(0.0)
-                        self.N[cn,cn+1] = - self.P2(0.0)
-                        self.N[cn,cm]   = self.P1(1.0)
-                        self.N[cn,cm+1] = self.P2(1.0)    
-                            
-                        self.b[cn] = - self.mesh.cells[y*cw+x-1].flux[e] + cell.flux[e]
-                            
-                        # CURRENT
-                        # Surface 2
-                        if order == 4:
-                            self.N[cn+1,cn]   = self.dP1(1.0)
-                            self.N[cn+1,cn+1] = self.dP2(1.0)
-                            self.N[cn+1,cn+2] = self.dP3(1.0)
-                            self.N[cn+1,cn+3] = self.dP4(1.0)
-                        else:
-                            self.N[cn+1,cn]   = self.dP1(1.0)
-                            self.N[cn+1,cn+1] = self.dP2(1.0)
-                                                                
-                    else:
-                          
-                        # FLUX
-                        # Surface 0
-                        self.N[cn,cn]   = - self.P1(0.0)
-                        self.N[cn,cn+1] = - self.P2(0.0)
-                        self.N[cn,cm]   = self.P1(1.0)
-                        self.N[cn,cm+1] = self.P2(1.0)  
-                              
-                        self.b[cn] = - self.mesh.cells[y*cw+x-1].flux[e] + cell.flux[e]
+                            if ch > 1:                             
+                                cell_next = self.mesh.cells[(y+1)*cw+x]
+
+                                # CURRENT INTERFACE SURFACE 1                        
+                                if order == 4:
+                                    self.N[cn+1,cn+4] = - self.dP1(1.0) * cell.material.D[e] / cell.height
+                                    self.N[cn+1,cn+5] = - self.dP2(1.0) * cell.material.D[e] / cell.height
+                                    self.N[cn+1,cn+6] = - self.dP3(1.0) * cell.material.D[e] / cell.height
+                                    self.N[cn+1,cn+7] = - self.dP4(1.0) * cell.material.D[e] / cell.height
+                                    self.N[cn+1,cd+4] = self.dP1(0.0) * cell_next.material.D[e] / cell_next.height
+                                    self.N[cn+1,cd+5] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.height
+                                    self.N[cn+1,cd+6] = self.dP3(0.0) * cell_next.material.D[e] / cell_next.height
+                                    self.N[cn+1,cd+7] = self.dP4(0.0) * cell_next.material.D[e] / cell_next.height                            
+                                else:
+                                    self.N[cn+1,cn+2] = - self.dP1(1.0) * cell.material.D[e] / cell.height
+                                    self.N[cn+1,cn+3] = - self.dP2(1.0) * cell.material.D[e] / cell.height
+                                    self.N[cn+1,cd+2] = self.dP1(0.0) * cell_next.material.D[e] / cell_next.height
+                                    self.N[cn+1,cd+3] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.height
+                            else:
+                                
+                                # CURRENT BOUNDARY SURFACE 1
+                                if order == 4:
+                                    self.N[cn+1,cn+4] = self.dP1(1.0)
+                                    self.N[cn+1,cn+5] = self.dP2(1.0)
+                                    self.N[cn+1,cn+6] = self.dP3(1.0)
+                                    self.N[cn+1,cn+7] = self.dP4(1.0)
+                                else:
+                                    self.N[cn+1,cn+2] = self.dP1(1.0)
+                                    self.N[cn+1,cn+3] = self.dP2(1.0)
+                       
+                            # CURRENT INTERFACE SURFACE 2                        
+                            if cw > 1:
+                                cell_next = self.mesh.cells[y*cw+x+1]
+                                
+                                if order == 4:
+                                    self.N[cn+2,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
+                                    self.N[cn+2,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
+                                    self.N[cn+2,cn+2] = - self.dP3(1.0) * cell.material.D[e] / cell.width
+                                    self.N[cn+2,cn+3] = - self.dP4(1.0) * cell.material.D[e] / cell.width
+                                    self.N[cn+2,cr]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
+                                    self.N[cn+2,cr+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
+                                    self.N[cn+2,cr+2] = self.dP3(0.0) * cell_next.material.D[e] / cell_next.width
+                                    self.N[cn+2,cr+3] = self.dP4(0.0) * cell_next.material.D[e] / cell_next.width                            
+                                else:
+                                    self.N[cn+2,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
+                                    self.N[cn+2,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
+                                    self.N[cn+2,cr]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
+                                    self.N[cn+2,cr+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
+                            else:
+                                # CURRENT BOUNDARY SURFACE 2
+                                if order == 4:
+                                    self.N[cn+2,cn]   = self.dP1(1.0)
+                                    self.N[cn+2,cn+1] = self.dP2(1.0)
+                                    self.N[cn+2,cn+2] = self.dP3(1.0)
+                                    self.N[cn+2,cn+3] = self.dP4(1.0)
+                                else:
+                                    self.N[cn+2,cn]   = self.dP1(1.0)
+                                    self.N[cn+2,cn+1] = self.dP2(1.0)
                         
-                        cell_next = self.mesh.cells[y*cw+x+1]
-                             
-                        # CURRENT                        
-                        # Surface 2
-                        if order == 4:
-                            self.N[cn+1,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,cn+2] = - self.dP3(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,cn+3] = - self.dP4(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,co]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+1,co+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+1,co+2] = self.dP3(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+1,co+3] = self.dP4(0.0) * cell_next.material.D[e] / cell_next.width
+                            # CURRENT BOUNDARY 3
+                            if order == 4:
+                                self.N[cn+3,cn+4] = self.dP1(0.0)
+                                self.N[cn+3,cn+5] = self.dP2(0.0)
+                                self.N[cn+3,cn+6] = self.dP3(0.0)
+                                self.N[cn+3,cn+7] = self.dP4(0.0)
+                            else:
+                                self.N[cn+3,cn+2] = self.dP1(0.0)
+                                self.N[cn+3,cn+3] = self.dP2(0.0)
+                        
                         else:
-                            self.N[cn+1,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+1,co]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+1,co+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
                             
+                            # FLUX SURFACE 0
+                            self.N[cn,cn]   = - self.P1(0.0)
+                            self.N[cn,cn+1] = - self.P2(0.0)
+                            self.N[cn,cl]   = self.P1(1.0)
+                            self.N[cn,cl+1] = self.P2(1.0)    
+                            
+                            self.b[cn] = - self.mesh.cells[y*cw+x-1].flux[e] + cell.flux[e]
+                            
+                            if ch > 1:                             
+                                cell_next = self.mesh.cells[(y+1)*cw+x]
+
+                                # CURRENT INTERFACE SURFACE 1                        
+                                if order == 4:
+                                    self.N[cn+1,cn+4] = - self.dP1(1.0) * cell.material.D[e] / cell.height
+                                    self.N[cn+1,cn+5] = - self.dP2(1.0) * cell.material.D[e] / cell.height
+                                    self.N[cn+1,cn+6] = - self.dP3(1.0) * cell.material.D[e] / cell.height
+                                    self.N[cn+1,cn+7] = - self.dP4(1.0) * cell.material.D[e] / cell.height
+                                    self.N[cn+1,cd+4] = self.dP1(0.0) * cell_next.material.D[e] / cell_next.height
+                                    self.N[cn+1,cd+5] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.height
+                                    self.N[cn+1,cd+6] = self.dP3(0.0) * cell_next.material.D[e] / cell_next.height
+                                    self.N[cn+1,cd+7] = self.dP4(0.0) * cell_next.material.D[e] / cell_next.height                            
+                                else:
+                                    self.N[cn+1,cn+2] = - self.dP1(1.0) * cell.material.D[e] / cell.height
+                                    self.N[cn+1,cn+3] = - self.dP2(1.0) * cell.material.D[e] / cell.height
+                                    self.N[cn+1,cd+2] = self.dP1(0.0) * cell_next.material.D[e] / cell_next.height
+                                    self.N[cn+1,cd+3] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.height
+                            else:
+                                
+                                # CURRENT BOUNDARY SURFACE 1
+                                if order == 4:
+                                    self.N[cn+1,cn+4] = self.dP1(1.0)
+                                    self.N[cn+1,cn+5] = self.dP2(1.0)
+                                    self.N[cn+1,cn+6] = self.dP3(1.0)
+                                    self.N[cn+1,cn+7] = self.dP4(1.0)
+                                else:
+                                    self.N[cn+1,cn+2] = self.dP1(1.0)
+                                    self.N[cn+1,cn+3] = self.dP2(1.0)
+                       
+                            # CURRENT INTERFACE SURFACE 2                        
+                            if x != cw - 1:
+                                cell_next = self.mesh.cells[y*cw+x+1]
+                                
+                                if order == 4:
+                                    self.N[cn+2,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
+                                    self.N[cn+2,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
+                                    self.N[cn+2,cn+2] = - self.dP3(1.0) * cell.material.D[e] / cell.width
+                                    self.N[cn+2,cn+3] = - self.dP4(1.0) * cell.material.D[e] / cell.width
+                                    self.N[cn+2,cr]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
+                                    self.N[cn+2,cr+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
+                                    self.N[cn+2,cr+2] = self.dP3(0.0) * cell_next.material.D[e] / cell_next.width
+                                    self.N[cn+2,cr+3] = self.dP4(0.0) * cell_next.material.D[e] / cell_next.width                            
+                                else:
+                                    self.N[cn+2,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
+                                    self.N[cn+2,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
+                                    self.N[cn+2,cr]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
+                                    self.N[cn+2,cr+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
+                            else:
+                                # CURRENT BOUNDARY SURFACE 2
+                                if order == 4:
+                                    self.N[cn+2,cn]   = self.dP1(1.0)
+                                    self.N[cn+2,cn+1] = self.dP2(1.0)
+                                    self.N[cn+2,cn+2] = self.dP3(1.0)
+                                    self.N[cn+2,cn+3] = self.dP4(1.0)
+                                else:
+                                    self.N[cn+2,cn]   = self.dP1(1.0)
+                                    self.N[cn+2,cn+1] = self.dP2(1.0)
+                            
+                            # CURRENT BOUNDARY 3
+                            if order == 4:
+                                self.N[cn+3,cn+4] = self.dP1(0.0)
+                                self.N[cn+3,cn+5] = self.dP2(0.0)
+                                self.N[cn+3,cn+6] = self.dP3(0.0)
+                                self.N[cn+3,cn+7] = self.dP4(0.0)
+                            else:
+                                self.N[cn+3,cn+2] = self.dP1(0.0)
+                                self.N[cn+3,cn+3] = self.dP2(0.0)
+                                
+                    elif y < cw - 1:
+                        if x == 0:
+                            # CURRENT BOUNDARY SURFACE 0
+                            if order == 4:
+                                self.N[cn,cn]   = self.dP1(0.0)
+                                self.N[cn,cn+1] = self.dP2(0.0)
+                                self.N[cn,cn+2] = self.dP3(0.0)
+                                self.N[cn,cn+3] = self.dP4(0.0)
+                            else:
+                                self.N[cn,cn]   = self.dP1(0.0)
+                                self.N[cn,cn+1] = self.dP2(0.0)
+                        else: 
+                            # FLUX SURFACE 0
+                            self.N[cn,cn]   = - self.P1(0.0)
+                            self.N[cn,cn+1] = - self.P2(0.0)
+                            self.N[cn,cl]   = self.P1(1.0)
+                            self.N[cn,cl+1] = self.P2(1.0)    
+                            
+                            self.b[cn] = - self.mesh.cells[y*cw+x-1].flux[e] + cell.flux[e]
+                            
+                        # CURRENT INTERFACE 1    
+                        cell_next = self.mesh.cells[(y+1)*cw+x]
+
+                        if order == 4:
+                            self.N[cn+1,cn+4] = - self.dP1(1.0) * cell.material.D[e] / cell.height
+                            self.N[cn+1,cn+5] = - self.dP2(1.0) * cell.material.D[e] / cell.height
+                            self.N[cn+1,cn+6] = - self.dP3(1.0) * cell.material.D[e] / cell.height
+                            self.N[cn+1,cn+7] = - self.dP4(1.0) * cell.material.D[e] / cell.height
+                            self.N[cn+1,cd+4] = self.dP1(0.0) * cell_next.material.D[e] / cell_next.height
+                            self.N[cn+1,cd+5] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.height
+                            self.N[cn+1,cd+6] = self.dP3(0.0) * cell_next.material.D[e] / cell_next.height
+                            self.N[cn+1,cd+7] = self.dP4(0.0) * cell_next.material.D[e] / cell_next.height                            
+                        else:
+                            self.N[cn+1,cn+2] = - self.dP1(1.0) * cell.material.D[e] / cell.height
+                            self.N[cn+1,cn+3] = - self.dP2(1.0) * cell.material.D[e] / cell.height
+                            self.N[cn+1,cd+2] = self.dP1(0.0) * cell_next.material.D[e] / cell_next.height
+                            self.N[cn+1,cd+3] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.height
+                        
+                                                
+                        if x != cw - 1:
+                            cell_next = self.mesh.cells[y*cw+x+1]
+                            
+                            # CURRENT INTERFACE SURFACE 2
+                            if order == 4:
+                                self.N[cn+2,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
+                                self.N[cn+2,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
+                                self.N[cn+2,cn+2] = - self.dP3(1.0) * cell.material.D[e] / cell.width
+                                self.N[cn+2,cn+3] = - self.dP4(1.0) * cell.material.D[e] / cell.width
+                                self.N[cn+2,cr]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
+                                self.N[cn+2,cr+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
+                                self.N[cn+2,cr+2] = self.dP3(0.0) * cell_next.material.D[e] / cell_next.width
+                                self.N[cn+2,cr+3] = self.dP4(0.0) * cell_next.material.D[e] / cell_next.width                            
+                            else:
+                                self.N[cn+2,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
+                                self.N[cn+2,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
+                                self.N[cn+2,cr]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
+                                self.N[cn+2,cr+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
+                        else:
+                            # CURRENT BOUNDARY SURFACE 2
+                            if order == 4:
+                                self.N[cn+2,cn]   = self.dP1(1.0)
+                                self.N[cn+2,cn+1] = self.dP2(1.0)
+                                self.N[cn+2,cn+2] = self.dP3(1.0)
+                                self.N[cn+2,cn+3] = self.dP4(1.0)
+                            else:
+                                self.N[cn+2,cn]   = self.dP1(1.0)
+                                self.N[cn+2,cn+1] = self.dP2(1.0)                        
+                    
+                        # FLUX SURFACE 3
+                        if order == 4:
+                            self.N[cn+3,cn+4] = - self.P1(0.0)
+                            self.N[cn+3,cn+5] = - self.P2(0.0)
+                            self.N[cn+3,cu+4] = self.P1(1.0)
+                            self.N[cn+3,cu+5] = self.P2(1.0)  
+                        else:
+                            self.N[cn+3,cn+2] = - self.P1(0.0)
+                            self.N[cn+3,cn+3] = - self.P2(0.0)
+                            self.N[cn+3,cu+2] = self.P1(1.0)
+                            self.N[cn+3,cu+3] = self.P2(1.0)  
+                        
+                        self.b[cn+3] = - self.mesh.cells[(y-1)*cw+x].flux[e] + cell.flux[e]
+                    
+                    else:    
+                        if x == 0:
+                            # CURRENT BOUNDARY SURFACE 0
+                            if order == 4:
+                                self.N[cn,cn]   = self.dP1(0.0)
+                                self.N[cn,cn+1] = self.dP2(0.0)
+                                self.N[cn,cn+2] = self.dP3(0.0)
+                                self.N[cn,cn+3] = self.dP4(0.0)
+                            else:
+                                self.N[cn,cn]   = self.dP1(0.0)
+                                self.N[cn,cn+1] = self.dP2(0.0)
+                        else: 
+                            # FLUX SURFACE 0
+                            self.N[cn,cn]   = - self.P1(0.0)
+                            self.N[cn,cn+1] = - self.P2(0.0)
+                            self.N[cn,cl]   = self.P1(1.0)
+                            self.N[cn,cl+1] = self.P2(1.0)    
+                            
+                            self.b[cn] = - self.mesh.cells[y*cw+x-1].flux[e] + cell.flux[e]     
+                                
+                        # CURRENT BOUNDARY SURFACE 1
+                        if order == 4:
+                            self.N[cn+1,cn+4] = self.dP1(1.0)
+                            self.N[cn+1,cn+5] = self.dP2(1.0)
+                            self.N[cn+1,cn+6] = self.dP3(1.0)
+                            self.N[cn+1,cn+7] = self.dP4(1.0)
+                        else:
+                            self.N[cn+1,cn+2] = self.dP1(1.0)
+                            self.N[cn+1,cn+3] = self.dP2(1.0)   
+                                
+                        if x != cw - 1:
+                            cell_next = self.mesh.cells[y*cw+x+1]
+                            
+                            # CURRENT INTERFACE SURFACE 2
+                            if order == 4:
+                                self.N[cn+2,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
+                                self.N[cn+2,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
+                                self.N[cn+2,cn+2] = - self.dP3(1.0) * cell.material.D[e] / cell.width
+                                self.N[cn+2,cn+3] = - self.dP4(1.0) * cell.material.D[e] / cell.width
+                                self.N[cn+2,cr]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
+                                self.N[cn+2,cr+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
+                                self.N[cn+2,cr+2] = self.dP3(0.0) * cell_next.material.D[e] / cell_next.width
+                                self.N[cn+2,cr+3] = self.dP4(0.0) * cell_next.material.D[e] / cell_next.width                            
+                            else:
+                                self.N[cn+2,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
+                                self.N[cn+2,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
+                                self.N[cn+2,cr]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
+                                self.N[cn+2,cr+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
+                        else:
+                            # CURRENT BOUNDARY SURFACE 2
+                            if order == 4:
+                                self.N[cn+2,cn]   = self.dP1(1.0)
+                                self.N[cn+2,cn+1] = self.dP2(1.0)
+                                self.N[cn+2,cn+2] = self.dP3(1.0)
+                                self.N[cn+2,cn+3] = self.dP4(1.0)
+                            else:
+                                self.N[cn+2,cn]   = self.dP1(1.0)
+                                self.N[cn+2,cn+1] = self.dP2(1.0)                                 
+                                
+                        # FLUX SURFACE 3
+                        if order == 4:
+                            self.N[cn+3,cn+4] = - self.P1(0.0)
+                            self.N[cn+3,cn+5] = - self.P2(0.0)
+                            self.N[cn+3,cu+4] = self.P1(1.0)
+                            self.N[cn+3,cu+5] = self.P2(1.0)  
+                        else:
+                            self.N[cn+3,cn+2] = - self.P1(0.0)
+                            self.N[cn+3,cn+3] = - self.P2(0.0)
+                            self.N[cn+3,cu+2] = self.P1(1.0)
+                            self.N[cn+3,cu+3] = self.P2(1.0)  
+                        
+                        self.b[cn+3] = - self.mesh.cells[(y-1)*cw+x].flux[e] + cell.flux[e]                                                            
 
                     if order == 4:
                         
-                        # Residual 1
-                        self.N[cn+2,cn]   = cell.material.sigma_r[e] / 3.0
-                        self.N[cn+2,cn+1] = 0.0
-                        self.N[cn+2,cn+2] = cell.material.sigma_r[e] / 5.0 + 12 * cell.material.D[e] / cell.width**2
-                        self.N[cn+2,cn+3] = 0.0
+                        # RESIDUAL X1
+                        self.N[cn+4,cn]   = cell.material.sigma_r[e] / 3.0
+                        self.N[cn+4,cn+1] = 0.0
+                        self.N[cn+4,cn+2] = cell.material.sigma_r[e] / 5.0 + 12 * cell.material.D[e] / cell.width**2
+                        self.N[cn+4,cn+3] = 0.0
                         
-                        cnp = order*ng*x
-#                         cn = order*e + order*ng*x
+                        cnp = 2*order*ng*(y*cw+x)
                             
                         # in scattering and fission
                         for g in range(ng):
                             # fission
-                            self.N[cn+2,cnp+order*g]   -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 3.0
-                            self.N[cn+2,cnp+order*g+2] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
+                            self.N[cn+4,cnp+2*order*g]   -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 3.0
+                            self.N[cn+4,cnp+2*order*g+2] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
                                 
                             # in scattering
                             if g != e:
-                                self.N[cn+2,cnp+order*g]   -= cell.material.sigma_s[g,e] / 3.0
-                                self.N[cn+2,cnp+order*g+2] -= cell.material.sigma_s[g,e] / 5.0
+                                self.N[cn+4,cnp+2*order*g]   -= cell.material.sigma_s[g,e] / 3.0
+                                self.N[cn+4,cnp+2*order*g+2] -= cell.material.sigma_s[g,e] / 5.0
 
                             
-                        # Residual 2
-                        self.N[cn+3,cn]   = 0.0
-                        self.N[cn+3,cn+1] = cell.material.sigma_r[e] / 5.0
-                        self.N[cn+3,cn+2] = 0.0
-                        self.N[cn+3,cn+3] = - 3.0 * cell.material.sigma_r[e] / 35.0 - 12.0 * cell.material.D[e] / cell.width**2
-
-                        cn = order*ng*x
+                        # RESIDUAL X2
+                        self.N[cn+5,cn]   = 0.0
+                        self.N[cn+5,cn+1] = cell.material.sigma_r[e] / 5.0
+                        self.N[cn+5,cn+2] = 0.0
+                        self.N[cn+5,cn+3] = - 3.0 * cell.material.sigma_r[e] / 35.0 - 12.0 * cell.material.D[e] / cell.width**2
                             
                         # in scattering and fission
                         for g in range(ng):
                             # fission
-                            self.N[cn+3,cnp+order*g+1] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
-                            self.N[cn+3,cnp+order*g+3] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff * (-3.0) / 35.0
+                            self.N[cn+5,cnp+2*order*g+1] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
+                            self.N[cn+5,cnp+2*order*g+3] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff * (-3.0) / 35.0
                                 
                             # in scattering
                             if g != e:
-                                self.N[cn+3,cnp+order*g+1] -= cell.material.sigma_s[g,e] / 5.0
-                                self.N[cn+3,cnp+order*g+3] -= cell.material.sigma_s[g,e] * (-3.0) / 35.0
+                                self.N[cn+5,cnp+2*order*g+1] -= cell.material.sigma_s[g,e] / 5.0
+                                self.N[cn+5,cnp+2*order*g+3] -= cell.material.sigma_s[g,e] * (-3.0) / 35.0
+
+                        # RESIDUAL Y1
+                        self.N[cn+6,cn+4] = cell.material.sigma_r[e] / 3.0
+                        self.N[cn+6,cn+5] = 0.0
+                        self.N[cn+6,cn+6] = cell.material.sigma_r[e] / 5.0 + 12 * cell.material.D[e] / cell.height**2
+                        self.N[cn+6,cn+7] = 0.0
+
+                        # in scattering and fission
+                        for g in range(ng):
+                            # fission
+                            self.N[cn+6,cnp+2*order*g+4] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 3.0
+                            self.N[cn+6,cnp+2*order*g+6] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
+                                
+                            # in scattering
+                            if g != e:
+                                self.N[cn+6,cnp+2*order*g+4] -= cell.material.sigma_s[g,e] / 3.0
+                                self.N[cn+6,cnp+2*order*g+6] -= cell.material.sigma_s[g,e] / 5.0
+                          
+                        # RESIDUAL Y2
+                        self.N[cn+7,cn+4] = 0.0
+                        self.N[cn+7,cn+5] = cell.material.sigma_r[e] / 5.0
+                        self.N[cn+7,cn+6] = 0.0
+                        self.N[cn+7,cn+7] = - 3.0 * cell.material.sigma_r[e] / 35.0 - 12.0 * cell.material.D[e] / cell.height**2
+                            
+                        # in scattering and fission
+                        for g in range(ng):
+                            # fission
+                            self.N[cn+7,cnp+2*order*g+5] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
+                            self.N[cn+7,cnp+2*order*g+7] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff * (-3.0) / 35.0
+                                
+                            # in scattering
+                            if g != e:
+                                self.N[cn+7,cnp+2*order*g+5] -= cell.material.sigma_s[g,e] / 5.0
+                                self.N[cn+7,cnp+2*order*g+7] -= cell.material.sigma_s[g,e] * (-3.0) / 35.0
                         
+                        
+
         
     def computeCoeffs(self):
         
         self.coeffs = np.linalg.solve(self.N,self.b)
-        
+
+                
     # compute the currents        
     def computeCurrents(self):
         
@@ -405,23 +671,32 @@ class Solver(object):
                 
                 for e in range(ng):
                     
-                    for side in range(0,3,2):
+                    for side in range(4):
                         surface = cell.surfaces[side]
                         
-                        if cell.neighborCells[side] != '':
-                            cn = order*ng*(y*cw+x) + order*e
+                        if cell.neighborCells[side] is not None:
+                            cn = 2*order*ng*(y*cw+x) + 2*order*e
                             
                             if order == 4:
-                                if side == 2:
-                                    surface.current[e] = - cell.material.D[e] / cell.width * (self.coeffs[cn] * self.dP1(1.0) + self.coeffs[cn+1] * self.dP2(1.0) + self.coeffs[cn+2] * self.dP3(1.0) + self.coeffs[cn+3] * self.dP4(1.0))
+                                if side == 0:
+                                    surface.current[e] = - cell.material.D[e] / cell.width  * (self.coeffs[cn]   * self.dP1(0.0) + self.coeffs[cn+1] * self.dP2(0.0) + self.coeffs[cn+2] * self.dP3(0.0) + self.coeffs[cn+3] * self.dP4(0.0))
+                                elif side == 1:
+                                    surface.current[e] = - cell.material.D[e] / cell.height * (self.coeffs[cn+4] * self.dP1(1.0) + self.coeffs[cn+5] * self.dP2(1.0) + self.coeffs[cn+6] * self.dP3(1.0) + self.coeffs[cn+7] * self.dP4(1.0))
+                                elif side == 2:
+                                    surface.current[e] = - cell.material.D[e] / cell.width  * (self.coeffs[cn]   * self.dP1(1.0) + self.coeffs[cn+1] * self.dP2(1.0) + self.coeffs[cn+2] * self.dP3(1.0) + self.coeffs[cn+3] * self.dP4(1.0))
                                 else:
-                                    surface.current[e] = - cell.material.D[e] / cell.width * (self.coeffs[cn] * self.dP1(0.0) + self.coeffs[cn+1] * self.dP2(0.0) + self.coeffs[cn+2] * self.dP3(0.0) + self.coeffs[cn+3] * self.dP4(0.0))
-                            else:
-                                if side == 2:
-                                    surface.current[e] = - cell.material.D[e] / cell.width * (self.coeffs[cn] * self.dP1(1.0) + self.coeffs[cn+1] * self.dP2(1.0))
+                                    surface.current[e] = - cell.material.D[e] / cell.height * (self.coeffs[cn+4] * self.dP1(0.0) + self.coeffs[cn+5] * self.dP2(0.0) + self.coeffs[cn+6] * self.dP3(0.0) + self.coeffs[cn+7] * self.dP4(0.0))
+                                                                        
+                            elif order == 2:
+                                if side == 0:
+                                    surface.current[e] = - cell.material.D[e] / cell.width  * (self.coeffs[cn]   * self.dP1(0.0) + self.coeffs[cn+1] * self.dP2(0.0))
+                                elif side == 1:
+                                    surface.current[e] = - cell.material.D[e] / cell.height * (self.coeffs[cn+2] * self.dP1(1.0) + self.coeffs[cn+3] * self.dP2(1.0))
+                                elif side == 2:
+                                    surface.current[e] = - cell.material.D[e] / cell.width * (self.coeffs[cn]    * self.dP1(1.0) + self.coeffs[cn+1] * self.dP2(1.0))
                                 else:
-                                    surface.current[e] = - cell.material.D[e] / cell.width * (self.coeffs[cn] * self.dP1(0.0) + self.coeffs[cn+1] * self.dP2(0.0))
-
+                                    surface.current[e] = - cell.material.D[e] / cell.height * (self.coeffs[cn+2] * self.dP1(0.0) + self.coeffs[cn+3] * self.dP2(0.0))
+                                    
     def P1(self, val):
         return (2 * val - 1)
     
@@ -546,7 +821,7 @@ def main():
             assert False, "unhandled option"
 
     # create mesh
-    mesh = Mesh([cell_size,cell_size], [1.0])
+    mesh = Mesh([cell_size,cell_size], [cell_size])
 #     mesh = Mesh([cell_size/2.0,cell_size/2.0,cell_size/2.0,cell_size/2.0], [1.0])
       
     # create fuel
@@ -569,15 +844,13 @@ def main():
         order = 2
 
     # assign fuel and moderator materials to mesh
+#     mesh.cells[0].setMaterial(fuel, order)
+#     mesh.cells[1].setMaterial(moderator, order)
+#     mesh.makeSurfaces()
+
     mesh.cells[0].setMaterial(fuel, order)
     mesh.cells[1].setMaterial(moderator, order)
     mesh.makeSurfaces()
-
-#     mesh.cells[0].setMaterial(fuel, order)
-#     mesh.cells[1].setMaterial(fuel, order)
-#     mesh.cells[2].setMaterial(moderator, order)
-#     mesh.cells[3].setMaterial(moderator, order)
-#     mesh.makeSurfaces()
     
     # plot the mesh
     pttr.plotMesh(mesh)
@@ -614,7 +887,7 @@ def main():
     
     if solve_method == 'NEM4' or solve_method == 'NEM2':
         pttr.plotFlux(solver)
-        pttr.plotCurrent(solver)
+#         pttr.plotCurrent(solver)
 
     stop = time.time()
     

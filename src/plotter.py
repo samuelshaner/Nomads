@@ -68,9 +68,9 @@ def plotFlux(solver):
             
             for e in range(ng):
                 if solver.method == 'NEM4':
-                    flux[e,xc*100+i] = solver.phi[xc*ng+e] + solver.coeffs[4*xc*ng+4*e] * solver.P1(i/100.0) + solver.coeffs[4*xc*ng+4*e+1] * solver.P2(i/100.0) + solver.coeffs[4*xc*ng+4*e+2] * solver.P3(i/100.0) + solver.coeffs[4*xc*ng+4*e+3] * solver.P4(i/100.0)
+                    flux[e,xc*100+i] = solver.phi[xc*ng+e] + solver.coeffs[2*4*xc*ng+2*4*e] * solver.P1(i/100.0) + solver.coeffs[2*4*xc*ng+2*4*e+1] * solver.P2(i/100.0) + solver.coeffs[2*4*xc*ng+2*4*e+2] * solver.P3(i/100.0) + solver.coeffs[2*4*xc*ng+2*4*e+3] * solver.P4(i/100.0)
                 else:
-                    flux[e,xc*100+i] = solver.phi[xc*ng+e] + solver.coeffs[2*xc*ng+2*e] * solver.P1(i/100.0) + solver.coeffs[2*xc*ng+2*e+1] * solver.P2(i/100.0) 
+                    flux[e,xc*100+i] = solver.phi[xc*ng+e] + solver.coeffs[2*2*xc*ng+2*2*e] * solver.P1(i/100.0) + solver.coeffs[2*2*xc*ng+2*2*e+1] * solver.P2(i/100.0) 
                     
     
     plt.figure()
@@ -78,7 +78,6 @@ def plotFlux(solver):
         plt.plot(x,flux[e,:])
     
     plt.savefig(solver.method + '_flux.png')
-    
     
 def plotCurrent(solver):
     
