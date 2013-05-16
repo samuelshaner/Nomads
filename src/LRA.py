@@ -24,7 +24,7 @@ tol = 1.e-8
     
 cell_size    = 15.0
 fuel_width   = 10.0
-solve_method = 'NEM4'
+solve_method = 'diffusion'
 iterations = 50
 
 for o, a in opts:
@@ -122,6 +122,7 @@ for cell in mesh.cells[115:117]: cell.setMaterial(fuel1bo,order)
 for cell in mesh.cells[117:119]: cell.setMaterial(fuel2bin,order)
 for cell in mesh.cells[119:121]: cell.setMaterial(reflector,order)
 
+mesh = mesh.refineMesh(3.0)
 mesh.makeSurfaces()
 
 # plot the mesh
@@ -131,36 +132,11 @@ pttr.plotMesh(mesh)
 solver = Solver(mesh, solve_method)   
 
 # solve the matrix problem to get flux profile and keff
-
-if solve_method == 'NEM4' or solve_method == 'NEM2':
-    for iteration in range(iterations):
-    
-        print 'CMFD outer iteration ' + str(iteration)
-    
-        solver.computeDs()
-        solver.makeAM()
-        solver.solve(tol)
-        solver.makeN()
-        solver.computeCoeffs()
-        solver.computeCurrents()
-    
-        if abs(solver.keff_old - solver.keff) < 1.e-8:
-            print solve_method + ': Converged in ' + str(iteration) + ' iterations --- k_eff = ' + str(solver.keff)[0:10]
-            break
-        
-        
-elif solve_method == 'diffusion':
-    solver.computeDs()
-    solver.makeAM()
-    solver.solve(tol)
-    print 'DIFFUSION: --- k_eff = ' + str(solver.keff)[0:10]
-
-
+solver.solve(tol, iterations)
 
 pttr.plotCellFlux(solver)
 if solve_method == 'NEM4' or solve_method == 'NEM2':
     pttr.plotFlux(solver)
-#         pttr.plotCurrent(solver)
 
 stop = time.time()
 

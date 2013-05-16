@@ -23,7 +23,7 @@ except getopt.GetoptError, err:
 tol = 1.e-8
     
 cell_size    = 5.0
-solve_method = 'NEM4'
+solve_method = 'diffusion'
 iterations = 50
 
 for o, a in opts:
@@ -216,29 +216,7 @@ pttr.plotMesh(mesh)
 solver = Solver(mesh, solve_method)   
 
 # solve the matrix problem to get flux profile and keff
-
-if solve_method == 'NEM4' or solve_method == 'NEM2':
-    for iteration in range(iterations):
-    
-        print 'CMFD outer iteration ' + str(iteration)
-    
-        solver.computeDs()
-        solver.makeAM()
-        solver.solve(tol)
-        solver.makeN()
-        solver.computeCoeffs()
-        solver.computeCurrents()
-    
-        if abs(solver.keff_old - solver.keff) < 1.e-8:
-            print solve_method + ': Converged in ' + str(iteration) + ' iterations --- k_eff = ' + str(solver.keff)[0:10]
-            break
-        
-        
-elif solve_method == 'diffusion':
-    solver.computeDs()
-    solver.makeAM()
-    solver.solve(tol)
-    print 'DIFFUSION: --- k_eff = ' + str(solver.keff)[0:10]
+solver.solve(tol, iterations)
 
 
 pttr.plotCellFlux(solver)
