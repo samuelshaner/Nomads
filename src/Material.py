@@ -14,6 +14,8 @@ class Material(object):
         self.sigma_s     = np.zeros([num_groups, num_groups])
         self.chi         = np.zeros(num_groups)
         self.id          = id
+        self.buckling    = 0.0
+
 
     def setSigmaS(self, xs):
         
@@ -43,9 +45,23 @@ class Material(object):
     def setChi(self, chi):
         
         self.chi = chi
+
+    def setBuckling(self, buckling):
+        
+        self.buckling = buckling
+
+        if self.D[0] > 0.0:
+            for e in range(self.num_groups):
+                self.sigma_r[e] += self.D[e] * self.buckling
+                self.sigma_a[e] += self.D[e] * self.buckling
         
     def setD(self, D):
         
         self.D = D
-                
+
+        if self.buckling > 0.0:
+            for e in range(self.num_groups):
+                self.sigma_r[e] += self.D[e] * self.buckling
+                self.sigma_a[e] += self.D[e] * self.buckling        
+
         

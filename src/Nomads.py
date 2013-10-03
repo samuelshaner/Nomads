@@ -5,7 +5,7 @@ from math import *
 from Cell import *
 from Material import *
 from Mesh import *
-import plotter as pttr
+from Plotter import *
 import os
 import sys
 import getopt
@@ -16,23 +16,13 @@ from scipy.sparse.linalg import spsolve
 
 class Solver(object):
 
-    def __init__(self, mesh, method):
+    def __init__(self, mesh):
         
         self.mesh = mesh
-        self.method = method
         self.ng = mesh.cells[0].material.num_groups
         self.A = lil_matrix((mesh.num_cells*self.ng,mesh.num_cells*self.ng))
         self.M = lil_matrix((mesh.num_cells*self.ng,mesh.num_cells*self.ng))
-        
-        if method == 'NEM4':
-            self.N = lil_matrix((8*mesh.num_cells*self.ng,8*mesh.num_cells*self.ng))
-            self.coeffs = np.zeros(8*mesh.num_cells*self.ng)
-            self.b = np.zeros(8*mesh.num_cells*self.ng)
-        else:
-            self.N = lil_matrix((4*mesh.num_cells*self.ng,4*mesh.num_cells*self.ng))
-            self.coeffs = np.zeros(4*mesh.num_cells*self.ng)
-            self.b = np.zeros(4*mesh.num_cells*self.ng)
-            
+                    
         self.phi = np.ones(mesh.num_cells*self.ng)
         self.keff = 1.0
         self.keff_old = 0.0
@@ -40,102 +30,70 @@ class Solver(object):
         
     def computeDs(self):
         
-        cw = self.mesh.cells_x
-        ch = self.mesh.cells_y
-        ng = self.ng
-        flux_next = 0.0
+        cx = self.mesh.cells_x
+        cy = self.mesh.cells_y
+        cz = self.mesh.cells_z
+
         flux = 0.0 
-        
-        for y in range(ch):
-            for x in range(cw):
+
+        for z in range(cz):
+            for y in range(cy):
+                for x in range(cx):
                 
-                cell = self.mesh.cells[y*cw+x]
+                    cell = self.mesh.cells[z*cx*cy + y*cx + x]
                 
-                for side in range(4):
+                    for side in range(6):
                     
-                    surface = cell.surfaces[side]
-                    cellNext = cell.neighborCells[side]
+                        surface = cell.surfaces[side]
+                        cellNext = cell.neighborCells[side]
                     
-                    for e in range(ng):
+                        for e in range(self.ng):
                         
-                        d = cell.material.D[e]
-                        flux = cell.flux[e]
+                            d = cell.material.D[e]
+                            flux = cell.flux[e]
                         
-                        # set the sense of the surface
-                        if side == 0 or side == 3:
-                            sense = -1.0
-                        else:
-                            sense = 1.0
+                            # set the length of the surface parallel to and perpendicular from surface
+                            if side == 0 or side == 1:
+                                length_perpen = cell.width
+                            elif side == 2 or side == 3:
+                                length_perpen = cell.length
+                            elif side == 4 or side == 5:
+                                length_perpen = cell.height
                             
-                        # set the length of the surface parallel to and perpendicular from surface
-                        if side == 0 or side == 2:
-                            length_perpen = cell.width
-                        elif side == 1 or side == 3:
-                            length_perpen = cell.height
-                            
-                            
-                        if cellNext is None:
-                            if surface.boundary == 'reflective':
-                                d_hat = 0.0
-                                d_tilde = 0.0
-                                current = 0.0
-                                d_dif = 0.0
+                            if cellNext is None:
+                                if surface.boundary == 'VACUUM':
+                                    d_dif = 2 * d / length_perpen / (1 + 4 * d / length_perpen)
+                                    d_hat = 2 * d / length_perpen / (1 + 4 * d / length_perpen)
+                                elif surface.boundary == 'ZERO_FLUX':
+                                    d_dif = 2 * d / length_perpen
+                                    d_hat = 2 * d / length_perpen
+                                else:
+                                    d_hat = 0.0
+                                    d_dif = 0.0
                                 
                             else:
-                                current = sense * surface.current[e]
-                                d_dif = 2 * d / length_perpen / (1 + 4 * d / length_perpen)
-                                d_hat = 2 * d / length_perpen / (1 + 4 * d / length_perpen)
-                                if flux == 0.0:
-                                    d_tilde = 0.0
-                                else:
-                                    d_tilde = (sense * d_hat * flux - current) / flux
-                                
-                        else:
 
-                            if side == 0 or side == 2:
-                                next_length_perpen = cellNext.width
-                            elif side == 1 or side == 3:
-                                next_length_perpen = cellNext.height
+                                if side == 0 or side == 1:
+                                    next_length_perpen = cellNext.width
+                                elif side == 2 or side == 3:
+                                    next_length_perpen = cellNext.length
+                                elif side == 4 or side == 5:
+                                    next_length_perpen = cellNext.height
 
-                            d_next = cellNext.material.D[e]
-                            flux_next = cellNext.flux[e]
+                                d_next = cellNext.material.D[e]
                         
-                            d_dif = 2 * d * d_next / (length_perpen * d + next_length_perpen * d_next)
-                            d_hat = 2 * d * d_next / (length_perpen * d + next_length_perpen * d_next)
-                        
-                            current = surface.current[e]
-                            
-                            if flux == 0.0 and flux_next == 0.0:
-                                d_tilde = 0.0
-                            else:
-                                d_tilde = - (sense * d_hat * (flux_next - flux) + current) / (flux_next + flux)
-                        
-                        if abs(d_tilde) > abs(d_hat):
-                            if sense == -1:
-                                if (1 - abs(d_tilde)/d_tilde < 1.e-8):
-                                    d_hat   = - current / (2*flux)
-                                    d_tilde = - current / (2*flux)
-                                else:
-                                    d_hat   = current / (2*flux_next)
-                                    d_tilde = - current / (2*flux_next)
-                            else: 
-                                if (1 - abs(d_tilde)/d_tilde < 1.e-8):
-                                    d_hat   = - current / (2*flux_next)
-                                    d_tilde = - current / (2*flux_next)
-                                else:
-                                    d_hat   = current / (2*flux)
-                                    d_tilde = - current / (2*flux)
-                                            
-                                            
-                        surface.DDif[e] = d_dif
-                        surface.DHat[e] = d_hat
-                        surface.DTilde[e] = surface.DTilde[e] * (1 - self.relax) + self.relax * d_tilde                
+                                d_dif = 2 * d * d_next / (length_perpen * d + next_length_perpen * d_next)
+                                d_hat = 2 * d * d_next / (length_perpen * d + next_length_perpen * d_next)
+                                                                                            
+                            surface.DDif[e] = d_dif
+                            surface.DHat[e] = d_hat
                          
                          
     def makeAM(self):
         
-        cw = self.mesh.cells_x
-        ch = self.mesh.cells_y
+        cx = self.mesh.cells_x
+        cy = self.mesh.cells_y
+        cz = self.mesh.cells_z
         ng = self.ng
 
         self.A = self.A.tolil()
@@ -143,490 +101,111 @@ class Solver(object):
         self.M = self.M.tolil()
         self.M = self.M * 0.0
         
-        for y in range(ch): 
-            for x in range(cw):
+        for z in range(cz):
+            for y in range(cy): 
+                for x in range(cx):
                 
-                for e in range(ng):
+                    for e in range(ng):
                     
-                    cell = self.mesh.cells[y*cw+x]
+                        cn = z*cy*cx + y*cx + x
+                        cell = self.mesh.cells[cn]
                     
-                    # absorption term on diagonal
-                    self.A[(y*cw+x)*ng + e, (y*cw+x)*ng + e] += cell.material.sigma_a[e] * cell.volume
+                        # absorption term on diagonal
+                        self.A[cn*ng + e, cn*ng + e] += cell.material.sigma_a[e] * cell.volume
                     
-                    # out scattering term on diagonal
-                    for g in range(ng):
-                        if e != g:
-                            self.A[(y*cw+x)*ng + e, (y*cw+x)*ng + e] += cell.material.sigma_s[e,g] * cell.volume
+                        # out scattering term on diagonal
+                        for g in range(ng):
+                            if e != g:
+                                self.A[cn*ng + e, cn*ng + e] += cell.material.sigma_s[e,g] * cell.volume
                     
-                    # fission terms on diagonal
-                    for g in range(ng):
-                        self.M[(y*cw+x)*ng + e, (y*cw+x)*ng + g] = cell.material.chi[e] * cell.material.nu_sigma_f[g] * cell.volume
+                        # fission terms on diagonal
+                        for g in range(ng):
+                            self.M[cn*ng + e, cn*ng + g] = cell.material.chi[e] * cell.material.nu_sigma_f[g] * cell.volume
 
-                    # in scattering terms on off diagonals
-                    for g in range(ng):
-                        if e != g:
-                            self.A[(y*cw+x)*ng + e, (y*cw+x)*ng + g] -= cell.material.sigma_s[g,e] * cell.volume
+                        # in scattering terms on off diagonals
+                        for g in range(ng):
+                            if e != g:
+                                self.A[cn*ng + e, cn*ng + g] -= cell.material.sigma_s[g,e] * cell.volume
                             
-                    # RIGHT SURFACE
+                        # RIGHT SURFACE
                     
-                    # transport term on diagonal
-                    if self.method == 'NEM4' or self.method == 'NEM2':
-                        self.A[(y*cw+x)*ng + e, (y*cw+x)*ng + e] += (cell.surfaces[2].DHat[e] - cell.surfaces[2].DTilde[e]) * cell.height
-                    elif self.method == 'diffusion':
-                        self.A[(y*cw+x)*ng + e, (y*cw+x)*ng + e] += cell.surfaces[2].DDif[e] * cell.height
+                        # transport term on diagonal
+                        self.A[cn*ng + e, cn*ng + e] += cell.surfaces[1].DDif[e] * cell.length * cell.height
                         
-                    # transport terms on off diagonals
-                    if x != cw - 1:
-                        if self.method == 'NEM4' or self.method == 'NEM2':
-                            self.A[(y*cw+x)*ng + e, (y*cw+x + 1)*ng + e] -= (cell.surfaces[2].DHat[e] + cell.surfaces[2].DTilde[e]) * cell.height
-                        elif self.method == 'diffusion':
-                            self.A[(y*cw+x)*ng + e, (y*cw+x + 1)*ng + e] -= cell.surfaces[2].DDif[e] * cell.height
+                        # transport terms on off diagonals
+                        if x != cx - 1:
+                            self.A[cn*ng + e, (cn + 1)*ng + e] -= cell.surfaces[1].DDif[e] * cell.length * cell.height
 
-                    # LEFT SURFACE
+                        # LEFT SURFACE
                     
-                    # transport term on diagonal
-                    if self.method == 'NEM4' or self.method == 'NEM2':
-                        self.A[(y*cw+x)*ng + e, (y*cw+x)*ng + e] += (cell.surfaces[0].DHat[e] + cell.surfaces[0].DTilde[e]) * cell.height
-                    elif self.method == 'diffusion':
-                        self.A[(y*cw+x)*ng + e, (y*cw+x)*ng + e] += cell.surfaces[0].DDif[e] * cell.height
+                        # transport term on diagonal
+                        self.A[cn*ng + e, cn*ng + e] += cell.surfaces[0].DDif[e] * cell.length * cell.height
                         
-                    # transport terms on off diagonals
-                    if x != 0:
-                        if self.method == 'NEM4' or self.method == 'NEM2':
-                            self.A[(y*cw+x)*ng + e, (y*cw+x - 1)*ng + e] -= (cell.surfaces[0].DHat[e] - cell.surfaces[0].DTilde[e]) * cell.height
-                        elif self.method == 'diffusion':
-                            self.A[(y*cw+x)*ng + e, (y*cw+x - 1)*ng + e] -= cell.surfaces[0].DDif[e] * cell.height
+                        # transport terms on off diagonals
+                        if x != 0:
+                            self.A[cn*ng + e, (cn - 1)*ng + e] -= cell.surfaces[0].DDif[e] * cell.length * cell.height
 
-                    # BOTTOM SURFACE
+                        # FRONT SURFACE
                     
-                    # transport term on diagonal
-                    if self.method == 'NEM4' or self.method == 'NEM2':
-                        self.A[(y*cw+x)*ng + e, (y*cw+x)*ng + e] += (cell.surfaces[1].DHat[e] - cell.surfaces[1].DTilde[e]) * cell.width
-                    elif self.method == 'diffusion':
-                        self.A[(y*cw+x)*ng + e, (y*cw+x)*ng + e] += cell.surfaces[1].DDif[e] * cell.width
+                        # transport term on diagonal
+                        self.A[cn*ng + e, cn*ng + e] += cell.surfaces[3].DDif[e] * cell.width * cell.height
                         
-                    # transport terms on off diagonals
-                    if y != ch - 1:
-                        if self.method == 'NEM4' or self.method == 'NEM2':
-                            self.A[(y*cw+x)*ng + e, ((y+1)*cw+x)*ng + e] -= (cell.surfaces[1].DHat[e] + cell.surfaces[1].DTilde[e]) * cell.width
-                        elif self.method == 'diffusion':
-                            self.A[(y*cw+x)*ng + e, ((y+1)*cw+x)*ng + e] -= cell.surfaces[1].DDif[e] * cell.width
+                        # transport terms on off diagonals
+                        if y != cy - 1:
+                            self.A[cn*ng + e, (cn + cx)*ng + e] -= cell.surfaces[3].DDif[e] * cell.width * cell.height
 
-                    # TOP SURFACE
+                        # BACK SURFACE
                     
-                    # transport term on diagonal
-                    if self.method == 'NEM4' or self.method == 'NEM2':
-                        self.A[(y*cw+x)*ng + e, (y*cw+x)*ng + e] += (cell.surfaces[3].DHat[e] + cell.surfaces[3].DTilde[e]) * cell.width
-                    elif self.method == 'diffusion':
-                        self.A[(y*cw+x)*ng + e, (y*cw+x)*ng + e] += cell.surfaces[3].DDif[e] * cell.width
+                        # transport term on diagonal
+                        self.A[cn*ng + e, cn*ng + e] += cell.surfaces[2].DDif[e] * cell.width * cell.height
                         
-                    # transport terms on off diagonals
-                    if y != 0:
-                        if self.method == 'NEM4' or self.method == 'NEM2':
-                            self.A[(y*cw+x)*ng + e, ((y-1)*cw+x)*ng + e] -= (cell.surfaces[3].DHat[e] - cell.surfaces[3].DTilde[e]) * cell.width
-                        elif self.method == 'diffusion':
-                            self.A[(y*cw+x)*ng + e, ((y-1)*cw+x)*ng + e] -= cell.surfaces[3].DDif[e] * cell.width
+                        # transport terms on off diagonals
+                        if y != 0:
+                            self.A[cn*ng + e, (cn - cx)*ng + e] -= cell.surfaces[2].DDif[e] * cell.width * cell.height
+
+                        # BOTTOM SURFACE
+                    
+                        # transport term on diagonal
+                        self.A[cn*ng + e, cn*ng + e] += cell.surfaces[4].DDif[e] * cell.width * cell.length
+                        
+                        # transport terms on off diagonals
+                        if z != cz - 1:
+                            self.A[cn*ng + e, (cn + cx*cy)*ng + e] -= cell.surfaces[4].DDif[e] * cell.width * cell.length
+
+                        # TOP SURFACE
+                    
+                        # transport term on diagonal
+                        self.A[cn*ng + e, cn*ng + e] += cell.surfaces[5].DDif[e] * cell.width * cell.length
+                        
+                        # transport terms on off diagonals
+                        if z != 0:
+                            self.A[cn*ng + e, (cn - cx*cy)*ng + e] -= cell.surfaces[5].DDif[e] * cell.width * cell.length
 
         self.A = self.A.tocsr()
         self.M = self.M.tocsr()
-                
-           
-    def makeN(self):
         
-        cw = self.mesh.cells_x
-        ch = self.mesh.cells_y
-        ng = self.ng
         
-        if self.method == 'NEM4':
-            order = 4
-            TL = np.zeros((3,3))
-            TL[0,0] = 1.0
-            TL[1,0] = 1.0
-            TL[2,0] = 1.0
-            TL[0,1] = -2.0
-            TL[1,1] = 0.0
-            TL[2,1] = 2.0
-            TL[0,2] = -6.0
-            TL[1,2] = 0.0
-            TL[2,2] = -6.0
-            f = np.zeros(3)
-            current = np.zeros(3)
-        elif self.method == 'NEM2':
-            order = 2
-        
-        self.N = self.N.tolil()
-        self.N = self.N * 0.0
-        
-        for y in range(ch): 
-            for x in range(cw):
-                
-                cell = self.mesh.cells[y*cw+x]
-                
-                for e in range(ng):
-                    
-                    cn = 2*order*e + 2*order*ng*(y*cw+x)
-                    cr = 2*order*e + 2*order*ng*(y*cw+x+1)
-                    cl = 2*order*e + 2*order*ng*(y*cw+x-1)
-                    cd = 2*order*e + 2*order*ng*((y+1)*cw+x)
-                    cu = 2*order*e + 2*order*ng*((y-1)*cw+x)                    
-                    
-                    # SURFACE 0
-                    if x == 0:
-                        # CURRENT BOUNDARY
-                        if order == 4:
-                            self.N[cn,cn]   = self.dP1(0.0)
-                            self.N[cn,cn+1] = self.dP2(0.0)
-                            self.N[cn,cn+2] = self.dP3(0.0)
-                            self.N[cn,cn+3] = self.dP4(0.0)
-                        else:
-                            self.N[cn,cn]   = self.dP1(0.0)
-                            self.N[cn,cn+1] = self.dP2(0.0)
-                    else:
-                        # FLUX INTERFACE
-                        self.N[cn,cn]   = - self.P1(0.0)
-                        self.N[cn,cn+1] = - self.P2(0.0)
-                        self.N[cn,cl]   = self.P1(1.0)
-                        self.N[cn,cl+1] = self.P2(1.0)    
-                        
-                        self.b[cn] = - self.mesh.cells[y*cw+x-1].flux[e] + cell.flux[e]                        
-
-                    # SURFACE 1
-                    if y == ch - 1:
-                        # CURRENT BOUNDARY
-                        if order == 4:
-                            self.N[cn+1,cn+4] = self.dP1(1.0)
-                            self.N[cn+1,cn+5] = self.dP2(1.0)
-                            self.N[cn+1,cn+6] = self.dP3(1.0)
-                            self.N[cn+1,cn+7] = self.dP4(1.0)
-                        else:
-                            self.N[cn+1,cn+2] = self.dP1(1.0)
-                            self.N[cn+1,cn+3] = self.dP2(1.0)                        
-                    else:
-                        cell_next = self.mesh.cells[(y+1)*cw+x]
-
-                        # CURRENT INTERFACE                        
-                        if order == 4:
-                            self.N[cn+1,cn+4] = - self.dP1(1.0) * cell.material.D[e] / cell.height
-                            self.N[cn+1,cn+5] = - self.dP2(1.0) * cell.material.D[e] / cell.height
-                            self.N[cn+1,cn+6] = - self.dP3(1.0) * cell.material.D[e] / cell.height
-                            self.N[cn+1,cn+7] = - self.dP4(1.0) * cell.material.D[e] / cell.height
-                            self.N[cn+1,cd+4] = self.dP1(0.0) * cell_next.material.D[e] / cell_next.height
-                            self.N[cn+1,cd+5] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.height
-                            self.N[cn+1,cd+6] = self.dP3(0.0) * cell_next.material.D[e] / cell_next.height
-                            self.N[cn+1,cd+7] = self.dP4(0.0) * cell_next.material.D[e] / cell_next.height                            
-                        else:
-                            self.N[cn+1,cn+2] = - self.dP1(1.0) * cell.material.D[e] / cell.height
-                            self.N[cn+1,cn+3] = - self.dP2(1.0) * cell.material.D[e] / cell.height
-                            self.N[cn+1,cd+2] = self.dP1(0.0) * cell_next.material.D[e] / cell_next.height
-                            self.N[cn+1,cd+3] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.height
-                        
-                    # SURFACE 2
-                    if x == cw - 1:
-                        # CURRENT BOUNDARY 
-                        if order == 4:
-                            self.N[cn+2,cn]   = self.dP1(1.0)
-                            self.N[cn+2,cn+1] = self.dP2(1.0)
-                            self.N[cn+2,cn+2] = self.dP3(1.0)
-                            self.N[cn+2,cn+3] = self.dP4(1.0)
-                        else:
-                            self.N[cn+2,cn]   = self.dP1(1.0)
-                            self.N[cn+2,cn+1] = self.dP2(1.0)                        
-                    else:  
-                        # CURRENT INTERFACE
-                        cell_next = self.mesh.cells[y*cw+x+1]
-                        
-                        if order == 4:
-                            self.N[cn+2,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+2,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+2,cn+2] = - self.dP3(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+2,cn+3] = - self.dP4(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+2,cr]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+2,cr+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+2,cr+2] = self.dP3(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+2,cr+3] = self.dP4(0.0) * cell_next.material.D[e] / cell_next.width                            
-                        else:
-                            self.N[cn+2,cn]   = - self.dP1(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+2,cn+1] = - self.dP2(1.0) * cell.material.D[e] / cell.width
-                            self.N[cn+2,cr]   = self.dP1(0.0) * cell_next.material.D[e] / cell_next.width
-                            self.N[cn+2,cr+1] = self.dP2(0.0) * cell_next.material.D[e] / cell_next.width                        
-                    
-                    # SURFACE 3
-                    if y == 0:
-                        # CURRENT BOUNDARY
-                        if order == 4:
-                            self.N[cn+3,cn+4] = self.dP1(0.0)
-                            self.N[cn+3,cn+5] = self.dP2(0.0)
-                            self.N[cn+3,cn+6] = self.dP3(0.0)
-                            self.N[cn+3,cn+7] = self.dP4(0.0)
-                        else:
-                            self.N[cn+3,cn+2] = self.dP1(0.0)
-                            self.N[cn+3,cn+3] = self.dP2(0.0)
-                      
-                    else:
-                        # FLUX INTERFACE
-                        if order == 4:
-                            self.N[cn+3,cn+4] = - self.P1(0.0)
-                            self.N[cn+3,cn+5] = - self.P2(0.0)
-                            self.N[cn+3,cu+4] = self.P1(1.0)
-                            self.N[cn+3,cu+5] = self.P2(1.0)  
-                        else:
-                            self.N[cn+3,cn+2] = - self.P1(0.0)
-                            self.N[cn+3,cn+3] = - self.P2(0.0)
-                            self.N[cn+3,cu+2] = self.P1(1.0)
-                            self.N[cn+3,cu+3] = self.P2(1.0)    
-                            
-                        self.b[cn+3] = - self.mesh.cells[(y-1)*cw+x].flux[e] + cell.flux[e]                      
-                        
-                        
-                    # WEIGHTED RESIDUALS
-                    if order == 4:
-                        
-                        # RESIDUAL X1
-                        self.N[cn+4,cn]   = cell.material.sigma_r[e] / 3.0
-                        self.N[cn+4,cn+1] = 0.0
-                        self.N[cn+4,cn+2] = cell.material.sigma_r[e] / 5.0 + 12 * cell.material.D[e] / cell.width**2
-                        self.N[cn+4,cn+3] = 0.0
-                        
-                        # transverse leakage
-                        f[:] = 0.0
-                        current[:] = 0.0
-                        current[1] = cell.surfaces[1].current[e] - cell.surfaces[3].current[e]
-                        if x != 0:
-                            current[0] = self.mesh.cells[y*cw+x - 1].surfaces[1].current[e] - self.mesh.cells[y*cw+x - 1].surfaces[3].current[e]
-                        if x != cw - 1:
-                            current[2] = self.mesh.cells[y*cw+x + 1].surfaces[1].current[e] - self.mesh.cells[y*cw+x + 1].surfaces[3].current[e]
-
-                        current = current * self.relax
-                        f = np.linalg.solve(TL, current)
-#                         self.b[cn+4] = -f[1]/3.0
-                        self.b[cn+4] = 0.25/3.0*(current[0] + current[2])
-
-                        cnp = 2*order*ng*(y*cw+x)
-                            
-                        # in scattering and fission
-                        for g in range(ng):
-                            # fission
-                            self.N[cn+4,cnp+2*order*g]   -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 3.0
-                            self.N[cn+4,cnp+2*order*g+2] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
-                                
-                            # in scattering
-                            if g != e:
-                                self.N[cn+4,cnp+2*order*g]   -= cell.material.sigma_s[g,e] / 3.0
-                                self.N[cn+4,cnp+2*order*g+2] -= cell.material.sigma_s[g,e] / 5.0
-
-                            
-                        # RESIDUAL X2
-                        self.N[cn+5,cn]   = 0.0
-                        self.N[cn+5,cn+1] = cell.material.sigma_r[e] / 5.0
-                        self.N[cn+5,cn+2] = 0.0
-                        self.N[cn+5,cn+3] = - 3.0 * cell.material.sigma_r[e] / 35.0 - 12.0 * cell.material.D[e] / cell.width**2
- 
-                        # transverse leakage
-#                         self.b[cn+5] = -f[2]/5.0
-                        self.b[cn+5] = 1.0/60.0*(current[0] - 2*current[1] + current[2])
-                            
-                        # in scattering and fission
-                        for g in range(ng):
-                            # fission
-                            self.N[cn+5,cnp+2*order*g+1] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
-                            self.N[cn+5,cnp+2*order*g+3] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff * (-3.0) / 35.0
-                                
-                            # in scattering
-                            if g != e:
-                                self.N[cn+5,cnp+2*order*g+1] -= cell.material.sigma_s[g,e] / 5.0
-                                self.N[cn+5,cnp+2*order*g+3] -= cell.material.sigma_s[g,e] * (-3.0) / 35.0
-
-                        # RESIDUAL Y1
-                        self.N[cn+6,cn+4] = cell.material.sigma_r[e] / 3.0
-                        self.N[cn+6,cn+5] = 0.0
-                        self.N[cn+6,cn+6] = cell.material.sigma_r[e] / 5.0 + 12 * cell.material.D[e] / cell.height**2
-                        self.N[cn+6,cn+7] = 0.0
-                        
-                        # transverse leakage
-                        f[:] = 0.0
-                        current[:] = 0.0
-                        current[1] = cell.surfaces[2].current[e] - cell.surfaces[0].current[e]
-                        if y != 0:
-                            current[0] = self.mesh.cells[(y-1)*cw+x].surfaces[2].current[e] - self.mesh.cells[(y-1)*cw+x].surfaces[0].current[e]
-                        if y != ch - 1:
-                            current[2] = self.mesh.cells[(y+1)*cw+x].surfaces[2].current[e] - self.mesh.cells[(y+1)*cw+x].surfaces[0].current[e]
-
-                        current = current * self.relax
-                        f = np.linalg.solve(TL, current)
-#                         self.b[cn+6] = -f[1]/3.0
-                        self.b[cn+6] = 0.25/3.0*(current[0] + current[2])
-
-                        # in scattering and fission
-                        for g in range(ng):
-                            # fission
-                            self.N[cn+6,cnp+2*order*g+4] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 3.0
-                            self.N[cn+6,cnp+2*order*g+6] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
-                                
-                            # in scattering
-                            if g != e:
-                                self.N[cn+6,cnp+2*order*g+4] -= cell.material.sigma_s[g,e] / 3.0
-                                self.N[cn+6,cnp+2*order*g+6] -= cell.material.sigma_s[g,e] / 5.0
-                          
-                        # RESIDUAL Y2
-                        self.N[cn+7,cn+4] = 0.0
-                        self.N[cn+7,cn+5] = cell.material.sigma_r[e] / 5.0
-                        self.N[cn+7,cn+6] = 0.0
-                        self.N[cn+7,cn+7] = - 3.0 * cell.material.sigma_r[e] / 35.0 - 12.0 * cell.material.D[e] / cell.height**2
-                            
-                        # transverse leakage
-#                         self.b[cn+7] = -f[2]/5.0
-                        self.b[cn+7] = 1.0/60.0*(current[0] - 2*current[1] + current[2])
-                            
-                        # in scattering and fission
-                        for g in range(ng):
-                            # fission
-                            self.N[cn+7,cnp+2*order*g+5] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff / 5.0
-                            self.N[cn+7,cnp+2*order*g+7] -= cell.material.chi[e] * cell.material.nu_sigma_f[g] / self.keff * (-3.0) / 35.0
-                                
-                            # in scattering
-                            if g != e:
-                                self.N[cn+7,cnp+2*order*g+5] -= cell.material.sigma_s[g,e] / 5.0
-                                self.N[cn+7,cnp+2*order*g+7] -= cell.material.sigma_s[g,e] * (-3.0) / 35.0
-                        
-                        
-        self.N = self.N.tocsr()
-
-    
-    def computeTransLeak(self):
-                 
-        cw = self.mesh.cells_x
-        ch = self.mesh.cells_y
-        ng = self.ng
-                 
-        for y in range(ch): 
-            for x in range(cw):
-                 
-                cell = self.mesh.cells[y*cw+x]
-                 
-                for e in range(ng):
-                     
-                    # leakage in x and y directions
-                    cell.leak[e]    = cell.surfaces[2].current[e] - cell.surfaces[0].current[e]
-                    cell.leak[ng+e] = cell.surfaces[1].current[e] - cell.surfaces[3].current[e]                    
-    
-        
-    def computeCoeffs(self):
-        
-        self.coeffs = spsolve(self.N,self.b)
-        self.N = self.N.tolil()
-        
-    # compute the currents        
-    def computeCurrents(self):
-        
-        cw = self.mesh.cells_x
-        ch = self.mesh.cells_y
-        ng = self.ng
-        
-        if self.method == 'NEM4':
-            order = 4
-        elif self.method == 'NEM2':
-            order = 2
-        
-        for y in range(ch): 
-            for x in range(cw):
-                
-                cell = self.mesh.cells[y*cw+x]
-                
-                for e in range(ng):
-                    
-                    for side in range(4):
-                        surface = cell.surfaces[side]
-                        
-                        if cell.neighborCells[side] is not None:
-                            cn = 2*order*ng*(y*cw+x) + 2*order*e
-                            
-                            if order == 4:
-                                if side == 0:
-                                    surface.current[e] = - cell.material.D[e] / cell.width  * (self.coeffs[cn]   * self.dP1(0.0) + self.coeffs[cn+1] * self.dP2(0.0) + self.coeffs[cn+2] * self.dP3(0.0) + self.coeffs[cn+3] * self.dP4(0.0))
-                                elif side == 1:
-                                    surface.current[e] = - cell.material.D[e] / cell.height * (self.coeffs[cn+4] * self.dP1(1.0) + self.coeffs[cn+5] * self.dP2(1.0) + self.coeffs[cn+6] * self.dP3(1.0) + self.coeffs[cn+7] * self.dP4(1.0))
-                                elif side == 2:
-                                    surface.current[e] = - cell.material.D[e] / cell.width  * (self.coeffs[cn]   * self.dP1(1.0) + self.coeffs[cn+1] * self.dP2(1.0) + self.coeffs[cn+2] * self.dP3(1.0) + self.coeffs[cn+3] * self.dP4(1.0))
-                                else:
-                                    surface.current[e] = - cell.material.D[e] / cell.height * (self.coeffs[cn+4] * self.dP1(0.0) + self.coeffs[cn+5] * self.dP2(0.0) + self.coeffs[cn+6] * self.dP3(0.0) + self.coeffs[cn+7] * self.dP4(0.0))
-                                                                        
-                            elif order == 2:
-                                if side == 0:
-                                    surface.current[e] = - cell.material.D[e] / cell.width  * (self.coeffs[cn]   * self.dP1(0.0) + self.coeffs[cn+1] * self.dP2(0.0))
-                                elif side == 1:
-                                    surface.current[e] = - cell.material.D[e] / cell.height * (self.coeffs[cn+2] * self.dP1(1.0) + self.coeffs[cn+3] * self.dP2(1.0))
-                                elif side == 2:
-                                    surface.current[e] = - cell.material.D[e] / cell.width * (self.coeffs[cn]    * self.dP1(1.0) + self.coeffs[cn+1] * self.dP2(1.0))
-                                else:
-                                    surface.current[e] = - cell.material.D[e] / cell.height * (self.coeffs[cn+2] * self.dP1(0.0) + self.coeffs[cn+3] * self.dP2(0.0))
-                                    
-    def P1(self, val):
-        return (2 * val - 1)
-    
-    def dP1(self, val):
-        return 2
-    
-    def P2(self, val):
-        return (6.0*val*(1-val)-1)
-    
-    def dP2(self, val):
-        return (6 - 12.0*val)
-    
-    def P3(self, val):
-        return (6.0*val*(1-val)*(2*val-1))
-
-    def dP3(self, val):
-        return (-6.0*(1-6*val+6*val**2))
-    
-    def P4(self, val):
-        return (6.0*val*(1-val)*(5*val**2-5*val+1))
-    
-    def dP4(self, val):
-        return (6.0-72*val+180*val**2-120*val**3)     
-        
-
     def solve(self, tol, iterations):
-        
-        if self.mesh.num_cells > 10:
-            self.relax = min(1.0/self.mesh.cells[0].width, 0.66)
-        else:
-            self.relax = 0.66
-            
-        print 'relaxation factor - ' + str(self.relax)[0:6]
 
-        
-        if self.method == 'NEM4' or self.method == 'NEM2':
-            for iteration in range(iterations):
-                print 'CMFD outer iteration ' + str(iteration) + ' --- k_eff = ' + str(self.keff)[0:10]
-                self.computeDs()
-                self.makeAM()
-                self.computeFlux(tol)
-                self.makeN()
-                self.computeTransLeak()
-                self.computeCoeffs()
-                self.computeCurrents()
-        
-                if abs(self.keff_old - self.keff) < tol:
-                    print self.method + ': Converged in ' + str(iteration+1) + ' iterations --- k_eff = ' + str(self.keff)[0:10]
-                    break
-                                
-        elif self.method == 'diffusion':
-            self.computeDs()
-            self.makeAM()
-            self.computeFlux(tol)
-            print 'DIFFUSION: --- k_eff = ' + str(self.keff)[0:10]
+        self.mesh.setCellBoundaries()
+        self.computeDs()
+        self.makeAM()
+        self.computeFlux(tol)
+        print 'DIFFUSION: --- k_eff = ' + str(self.keff)[0:10]
 
 
     def computeFlux(self, tol):
                  
         max_iter = 1000
         ng = self.mesh.cells[0].material.num_groups
-        cw = self.mesh.cells_x
-        ch = self.mesh.cells_y
-        sold = np.zeros(cw*ch*ng)
-        snew = np.zeros(cw*ch*ng)
-        res = np.zeros(cw*ch*ng)
-        self.phi = np.ones(cw*ch*ng)
+        cx = self.mesh.cells_x
+        cy = self.mesh.cells_y
+        cz = self.mesh.cells_z
+        print 'num cells x: ' + str(cx) + ', cy: ' + str(cy) + ', cz: ' + str(cz)
+        sold = np.zeros(cx*cy*cz*ng)
+        snew = np.zeros(cx*cy*cz*ng)
+        res = np.zeros(cx*cy*cz*ng)
+        self.phi = np.ones(cx*cy*cz*ng)
         self.keff_old = self.keff
 
         # get initial source and find initial keff
@@ -639,8 +218,8 @@ class Solver(object):
         # recompute and initialize the initial source
         sold = self.M * self.phi
         sumold = sum(sold)
-        sold = sold * (cw*ch*ng / sumold)
-        sumold = cw*ch*ng
+        sold = sold * (cx*cy*cz*ng / sumold)
+        sumold = cx*cy*cz*ng
         
         for i in range(max_iter):
             self.phi = spsolve(self.A, sold)
@@ -658,82 +237,16 @@ class Solver(object):
             l2_norm = np.linalg.norm(res)
          
             # compute error
-            l2_norm = l2_norm / (cw*ch*ng)
-            snew = snew * (cw*ch*ng) / sumnew
+            l2_norm = l2_norm / (cx*cy*cz*ng)
+            snew = snew * (cx*cy*cz*ng) / sumnew
              
             sold = snew
             
-#             print 'iteration: ' + str(i) + '  --- keff: ' + str(self.keff)[0:10]
+            print 'iteration: ' + str(i) + '  --- keff: ' + str(self.keff)[0:10]
              
             if l2_norm < tol:
                 
-                for i in range(cw*ch):
+                for i in range(cx*cy*cz):
                     for e in range(ng):
                         self.mesh.cells[i].flux[e] = self.phi[i*ng+e]
                 break            
-
-
-def main():
-    
-    start = time.time()
-
-    # set default values
-    tol = 1.e-8
-    cell_size    = 10.0
-    solve_method = 'NEM4'
-    iterations = 100
-
-    # create mesh
-    mesh = Mesh([cell_size,cell_size], [cell_size])
-    
-    # create fuel
-    fuel = Material(2, 'fuel')
-    fuel.setSigmaA([0.005, 0.10])
-    fuel.setD([1.5, 0.40])
-    fuel.setNuSigmaF([0.005, 0.15])
-    fuel.setChi([1.0, 0.0])
-    fuel.setSigmaS(np.array([[0.0, 0.02],[0.0, 0.0]]))
-    
-    # create fuel
-    moderator = Material(2, 'moderator')
-    moderator.setSigmaA([0.0, 0.01])
-    moderator.setD([1.5, 0.20])
-    moderator.setSigmaS(np.array([[0.0, 0.025],[0.0, 0.0]]))
-    
-    if solve_method == 'NEM4':
-        order = 4
-    else:
-        order = 2
-  
-    # add materials to cells
-    mesh.cells[0].setMaterial(fuel, order)
-    mesh.cells[1].setMaterial(moderator, order)
-#     mesh = mesh.refineMesh(.1)
-    mesh.makeSurfaces()
-    
-    # plot the mesh
-    pttr.plotMesh(mesh)
-    
-    # create solver
-    solver = Solver(mesh, solve_method)   
-
-    # solve the matrix problem to get flux profile and keff
-    solver.solve(tol, iterations)
-         
-    # plot the flux    
-    pttr.plotFlux(solver)
-    pttr.plotCellFlux(solver)
-    pttr.plotCurrent(solver)
-
-    stop = time.time()
-    
-    print 'Ran time ' + str(stop-start)[0:5] + ' seconds'
-
-    print '----------------------------------------------------------------------'
-
-if __name__ == '__main__':
-
-    main()
-
-
-
