@@ -6,7 +6,7 @@ sys.path.insert(0, '/Users/sam/git/Nomads/src/')
 from Nomads import *
     
 
-tol = 1.e-8    
+tol = 1.e-7    
 cell_size    = 15.0
 iterations = 50
 
@@ -96,7 +96,7 @@ for cell in mesh.cells[115:117]: cell.setMaterial(fuel1bo)
 for cell in mesh.cells[117:119]: cell.setMaterial(fuel2bin)
 for cell in mesh.cells[119:121]: cell.setMaterial(reflector)
 
-mesh = mesh.refineMesh(3.0)
+mesh = mesh.refineMesh(1.5)
 mesh.makeSurfaces()
 
 # plot the mesh
