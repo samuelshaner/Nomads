@@ -8,42 +8,44 @@ import sys
 
 class Mesh(object):
 
-    def __init__(self, widths, lengths, heights=[]):
+    def __init__(self, lengths_x, lengths_y, lengths_z=[]):
         
-        self.cells_x = len(widths)
-        self.cells_y = len(lengths)
-        
-        self.widths = widths
-        self.lengths = lengths
-        
-        self.width = sum(widths)
-        self.length = sum(lengths)
+        # set the properties of the mesh cells
+        self.cells_x   = len(lengths_x)
+        self.cells_y   = len(lengths_y)
+        self.lengths_x = lengths_x
+        self.lengths_y = lengths_y
+        self.length_x  = sum(lengths_x)
+        self.length_y  = sum(lengths_y)
 
+        # create mesh boundaries
         self.boundaries = np.empty(6, dtype=object)
         for i in range(6):
             self.boundaries[i] = Surface(0)
 
-        if heights:
+        # check if user input info for 3rd dimension
+        if lengths_z:
             self.dimensions = 3
-            self.heights = heights
-            self.height = sum(heights)
-            self.cells_z = len(heights)
+            self.lengths_z  = lengths_z
+            self.length_z   = sum(lengths_z)
+            self.cells_z    = len(lengths_z)
         else:
             self.dimensions = 2
-            self.heights = [1.0]
-            self.height = 1.0
-            self.cells_z = 1
+            self.lengths_z  = [1.0]
+            self.length_z   = 1.0
+            self.cells_z    = 1
 
+        # create array of Cell object pointers and set number of cells
         self.num_cells = self.cells_x * self.cells_y * self.cells_z
         self.cells = np.empty(self.num_cells, dtype=object)
 
-        # create cell objects
+        # create Cell objects
         for z in range(self.cells_z):
             for y in range(self.cells_y):
                 for x in range(self.cells_x):
-                    self.cells[z*(self.cells_x*self.cells_y) + y*self.cells_x + x] = Cell(self.widths[x], self.lengths[y], self.heights[z])
+                    self.cells[z*(self.cells_x*self.cells_y) + y*self.cells_x + x] = Cell(self.lengths_x[x], self.lengths_y[y], self.lengths_z[z])
                                 
-        # set neighbor cells and allocate for each cell
+        # set neighbor cells
         for z in range(self.cells_z):
             for y in range(self.cells_y):
                 for x in range(self.cells_x):
@@ -70,6 +72,7 @@ class Mesh(object):
                         cell.neighborCells[5] = self.cells[cell_num + self.cells_x*self.cells_y]
                     
 
+    # set the mesh boundary conditions (VACUUM, ZERO_FLUX, or REFLECTIVE)
     def setBoundaries(self, left, right, back, front, bottom='REFLECTIVE', top='REFLECTIVE'):
 
         self.boundaries[0].boundary = left
@@ -79,17 +82,16 @@ class Mesh(object):
         self.boundaries[4].boundary = bottom
         self.boundaries[5].boundary = top
 
-
+    # make mesh surfaces for each cell
     def makeSurfaces(self):
-        # set neighbor cells and allocate for each cell
+
         for z in range(self.cells_z):
             for y in range(self.cells_y):
                 for x in range(self.cells_x):
          
                     cell_num = z*self.cells_x*self.cells_y + y*self.cells_x + x
                     cell = self.cells[cell_num]
-        
-                    # Surface 0
+
                     if x == 0:
                         cell.surfaces[0] = Surface(cell.material.num_groups)
                     else:
@@ -105,98 +107,107 @@ class Mesh(object):
                     else:
                         cell.surfaces[4] = self.cells[cell_num - self.cells_x*self.cells_y].surfaces[5]
 
-                    # Surface 1
                     cell.surfaces[1] = Surface(cell.material.num_groups)
                 
-                    # Surface 3
                     cell.surfaces[3] = Surface(cell.material.num_groups)
 
-                    # Surface 5
                     cell.surfaces[5] = Surface(cell.material.num_groups)                
                     
     
     # break the geometry up into very small cells and solve diffusion problem
-    def refineMesh(self, cell_size, dimensions=[0,1]):
+    def refineMesh(self, cell_size, dimensions=['x','y']):
         
-        if 0 in dimensions:
-            # break up the old widths into chunks
-            widths = []
-            for i in self.widths:
-                num_new_widths = int(floor(i/cell_size))
-                new_widths = []
+        # check if mesh is being refined in the x direction
+        if 'x' in dimensions:
 
-                for j in range(num_new_widths):
-                    new_widths.append(cell_size)
+            # break up the old lengths_x into chunks
+            lengths_x = []
+            for i in self.lengths_x:
+                new_length_x = int(floor(i/cell_size))
+                new_lengths_x = []
+
+                # set new cell lengths
+                for j in range(new_length_x):
+                    new_lengths_x.append(cell_size)
                 
-                if abs(sum(new_widths) - i) >= 1.e-3:
-                    new_widths.append(i - sum(new_widths))
+                # if new cells don't entirely fill old cell,
+                # add a small cell to fill the gap
+                if abs(sum(new_lengths_x) - i) >= 1.e-3:
+                    new_lengths_x.append(i - sum(new_lengths_x))
                 
-                for k in new_widths:
-                    widths.append(k) 
+                for k in new_lengths_x:
+                    lengths_x.append(k) 
         else:
-            widths = self.widths
+            lengths_x = self.lengths_x
 
-        if 1 in dimensions:
-            # break up the old lengths into chunks
-            lengths = []
-            for i in self.lengths:
-                num_new_lengths = int(floor(i/cell_size))
-                new_lengths = []
+        if 'y' in dimensions:
+ 
+           # break up the old lengths_y into chunks
+            lengths_y = []
+            for i in self.lengths_y:
+                new_length_y = int(floor(i/cell_size))
+                new_lengths_y = []
             
-                for j in range(num_new_lengths):
-                    new_lengths.append(cell_size)
+                for j in range(new_length_y):
+                    new_lengths_y.append(cell_size)
                 
-                if abs(sum(new_lengths) - i) >= 1.e-3:
-                    new_lengths.append(i - sum(new_lengths))
+                if abs(sum(new_lengths_y) - i) >= 1.e-3:
+                    new_lengths_y.append(i - sum(new_lengths_y))
                 
-                for k in new_lengths:
-                    lengths.append(k)
+                for k in new_lengths_y:
+                    lengths_y.append(k)
 
         else:
-            lengths = self.lengths
+            lengths_y = self.lengths_y
 
-        if 2 in dimensions:
-            # break up the old heights into chunks
-            heights = []
-            for i in self.heights:
-                num_new_heights = int(floor(i/cell_size))
-                new_heights = []
+        if 'z' in dimensions:
+
+            # break up the old lengths_z into chunks
+            lengths_z = []
+            for i in self.lengths_z:
+                new_length_z = int(floor(i/cell_size))
+                new_lengths_z = []
             
-                for j in range(num_new_heights):
-                    new_heights.append(cell_size)
+                for j in range(new_length_z):
+                    new_lengths_z.append(cell_size)
                 
-                if abs(sum(new_heights) - i) >= 1.e-3:
-                    new_heights.append(i - sum(new_heights))
+                if abs(sum(new_lengths_z) - i) >= 1.e-3:
+                    new_lengths_z.append(i - sum(new_lengths_z))
                 
-                for k in new_heights:
-                    heights.append(k)
+                for k in new_lengths_z:
+                    lengths_z.append(k)
         else:
-            heights = self.heights
+            lengths_z = self.lengths_z
 
         if self.dimensions == 2:
-            mesh = Mesh(widths, lengths)
+            mesh = Mesh(lengths_x, lengths_y)
         else:
-            mesh = Mesh(widths, lengths, heights)
+            mesh = Mesh(lengths_x, lengths_y, lengths_z)
 
         # set the cell materials
         for zn in range(mesh.cells_z):
             for yn in range(mesh.cells_y):
                 for xn in range(mesh.cells_x):
             
-                    xval = (sum(mesh.widths[0:xn]) + sum(mesh.widths[0:xn+1]))/2.0
-                    yval = (sum(mesh.lengths[0:yn]) + sum(mesh.lengths[0:yn+1]))/2.0
-                    zval = (sum(mesh.heights[0:zn]) + sum(mesh.heights[0:zn+1]))/2.0
+                    # get center coordinate of new cell
+                    xval = (sum(mesh.lengths_x[0:xn]) + sum(mesh.lengths_x[0:xn+1]))/2.0
+                    yval = (sum(mesh.lengths_y[0:yn]) + sum(mesh.lengths_y[0:yn+1]))/2.0
+                    zval = (sum(mesh.lengths_z[0:zn]) + sum(mesh.lengths_z[0:zn+1]))/2.0
            
+                    # find which old cell the new cell is in
                     flag = 0     
-                    for x in range(len(self.widths)):
-                        for y in range(len(self.lengths)):
-                            for z in range(len(self.heights)):
+                    for x in range(len(self.lengths_x)):
+                        for y in range(len(self.lengths_y)):
+                            for z in range(len(self.lengths_z)):
                                 
                                 cell_num = z*self.cells_x*self.cells_y + y*self.cells_x + x
                                 cell = self.cells[cell_num]
-                        
-                                if (xval >= sum(self.widths[0:x]) and xval <= sum(self.widths[0:x+1]) and yval >= sum(self.lengths[0:y]) and yval <= sum(self.lengths[0:y+1]) 
-                                    and zval >= sum(self.heights[0:z]) and zval <= sum(self.heights[0:z+1])):
+                                
+                                # if new cell center is bounded by old cell, set the new cell's material
+                                if (xval >= sum(self.lengths_x[0:x]) and xval <= sum(self.lengths_x[0:x+1]) and 
+                                    yval >= sum(self.lengths_y[0:y]) and yval <= sum(self.lengths_y[0:y+1]) and 
+                                    zval >= sum(self.lengths_z[0:z]) and zval <= sum(self.lengths_z[0:z+1])):
+                                    
                                     mesh.cells[zn*mesh.cells_y*mesh.cells_x + yn*mesh.cells_x + xn].setMaterial(cell.material)
                                     flag = 1
                                     break
@@ -210,6 +221,7 @@ class Mesh(object):
         return mesh
 
 
+    # set teh boundaries for each cell
     def setCellBoundaries(self):
 
         # set x boundaries
@@ -237,6 +249,3 @@ class Mesh(object):
                 self.cells[cell_num].surfaces[4].boundary = self.boundaries[4]
                 cell_num = (self.cells_z-1)*self.cells_x*self.cells_y + y*self.cells_x + x
                 self.cells[cell_num].surfaces[5].boundary = self.boundaries[5]
-
-
-
